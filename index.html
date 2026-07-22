@@ -481,6 +481,22 @@ function memberInProgramme(m, progId) {
   return !!m.allProgrammes || m.programmeIds.includes(progId);
 }
 
+// Un membre "Ponctuel (AP)" est intégré définitivement à la base dès qu'il a été
+// pointé (présent ou absent) à plus de 6 séances réparties sur au moins 3 programmes.
+function checkApPromotion(data, membreId) {
+  const m = data.membres.find(x => x.id === membreId);
+  if (!m || !m.ap) return false;
+  const pts = data.pointages.filter(p => p.membreId === membreId);
+  const sessionIds = Array.from(new Set(pts.map(p => p.sessionId)));
+  const sessions = sessionIds.map(id => data.sessions.find(s => s.id === id)).filter(Boolean);
+  const nbProgrammes = new Set(sessions.map(s => s.programmeId)).size;
+  if (sessions.length > 6 && nbProgrammes >= 3) {
+    m.ap = false;
+    return true;
+  }
+  return false;
+}
+
 function memberStats(data, membreId, yearFilter) {
   yearFilter = yearFilter || 'toutes';
   const m = data.membres.find(x => x.id === membreId);
@@ -516,7 +532,7 @@ function programStats(data, progId, yearFilter) {
   const present = pts.filter(p => p.statut === 'present').length;
   const total = pts.length;
   const tauxPresence = total ? Math.round((present / total) * 100) : 0;
-  const membresInscrits = data.membres.filter(m => memberInProgramme(m, progId));
+  const membresInscrits = data.membres.filter(m => !m.ap && memberInProgramme(m, progId));
   const membresPresentsUneFois = new Set(pts.filter(p => p.statut === 'present').map(p => p.membreId));
   const tauxParticipation = membresInscrits.length ? Math.round((membresPresentsUneFois.size / membresInscrits.length) * 100) : 0;
   return { tauxPresence, tauxAbsence: 100 - tauxPresence, tauxParticipation, nbSessions: sessions.length, nbMembres: membresInscrits.length, present, total };
@@ -530,7 +546,7 @@ function sessionStats(data, sessionId) {
 // Statistiques globales, filtrables par programme ('global' = tous) et par année ('toutes' = toutes)
 function scopedStats(data, progFilter, yearFilter) {
   yearFilter = yearFilter || 'toutes';
-  const membres = progFilter === 'global' ? data.membres : data.membres.filter(m => memberInProgramme(m, progFilter));
+  const membres = (progFilter === 'global' ? data.membres : data.membres.filter(m => memberInProgramme(m, progFilter))).filter(m => !m.ap);
   const nbH = membres.filter(m => m.sexe === 'H').length;
   const nbF = membres.filter(m => m.sexe === 'F').length;
   const total = membres.length;
@@ -857,6 +873,24 @@ function statCard(label, value, note, cls) {
 }
 function emptyRow(msg) { return `<div class="ledger-row" style="color:var(--ink-faint);font-size:13px;">${msg}</div>`; }
 
+const centerTextPlugin = {
+  id: 'centerText',
+  afterDraw(chart) {
+    if (chart.config.type !== 'doughnut' || !chart.config._centerText) return;
+    const { ctx, chartArea: { left, right, top, bottom } } = chart;
+    const cx = (left + right) / 2, cy = (top + bottom) / 2;
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = "700 26px 'Fraunces', serif";
+    ctx.fillStyle = '#1C2A20';
+    ctx.fillText(chart.config._centerText.value, cx, cy - 6);
+    ctx.font = "600 10px 'Manrope', sans-serif";
+    ctx.fillStyle = '#84927F';
+    ctx.fillText(chart.config._centerText.label, cx, cy + 14);
+    ctx.restore();
+  }
+};
+
 let hfChartInst = null, partChartInst = null;
 function attachDashboardEvents() {
   const d = state.data;
@@ -869,27 +903,76 @@ function attachDashboardEvents() {
   const hfCanvas = document.getElementById('hfChart');
   if (hfCanvas) {
     if (hfChartInst) hfChartInst.destroy();
+    const ctx = hfCanvas.getContext('2d');
+    const goldGrad = ctx.createLinearGradient(0, 0, 0, 220);
+    goldGrad.addColorStop(0, '#E0AC2E'); goldGrad.addColorStop(1, '#B87A0C');
+    const emeraldGrad = ctx.createLinearGradient(0, 0, 0, 220);
+    emeraldGrad.addColorStop(0, '#2CC28E'); emeraldGrad.addColorStop(1, '#0B7A55');
     hfChartInst = new Chart(hfCanvas, {
       type: 'doughnut',
-      data: { labels: ['Hommes', 'Femmes'], datasets: [{ data: [g.nbH, g.nbF], backgroundColor: ['#C4890F', '#0F9E6E'], borderColor: '#FFFFFF', borderWidth: 3 }] },
-      options: { plugins: { legend: { labels: { color: '#1C2A20', font: { family: 'Manrope', size: 12, weight: 600 } } } }, cutout: '68%' }
+      data: { labels: ['Hommes', 'Femmes'], datasets: [{ data: [g.nbH, g.nbF], backgroundColor: [goldGrad, emeraldGrad], borderColor: '#FFFFFF', borderWidth: 4, hoverOffset: 14, hoverBorderWidth: 4 }] },
+      options: {
+        cutout: '70%',
+        animation: { animateRotate: true, animateScale: true, duration: 1000, easing: 'easeOutQuart' },
+        interaction: { intersect: true },
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#1C2A20', usePointStyle: true, pointStyle: 'circle', padding: 16, font: { family: 'Manrope', size: 12, weight: 600 } } },
+          tooltip: {
+            backgroundColor: '#122318', titleColor: '#EEF2E6', bodyColor: '#EEF2E6',
+            padding: 10, cornerRadius: 8, displayColors: true, boxPadding: 4,
+            callbacks: { label: (ctx) => ' ' + ctx.label + ' : ' + ctx.parsed + (g.total ? ' (' + Math.round(ctx.parsed / g.total * 100) + '%)' : '') }
+          }
+        }
+      },
+      plugins: [centerTextPlugin]
     });
+    hfChartInst.config._centerText = { value: String(g.total), label: g.total > 1 ? 'membres' : 'membre' };
+    hfChartInst.update();
   }
   const partCanvas = document.getElementById('partChart');
   if (partCanvas) {
     if (partChartInst) partChartInst.destroy();
+    const ctx2 = partCanvas.getContext('2d');
+    const barGrad = ctx2.createLinearGradient(0, 0, 0, 260);
+    barGrad.addColorStop(0, '#2CC28E'); barGrad.addColorStop(1, '#0B7A55');
+    const barHoverGrad = ctx2.createLinearGradient(0, 0, 0, 260);
+    barHoverGrad.addColorStop(0, '#3EDBA3'); barHoverGrad.addColorStop(1, '#0E9E68');
     const labels = d.programmes.map(p => p.nom);
     const values = d.programmes.map(p => programStats(d, p.id, state.dashYearFilter).tauxParticipation);
     partChartInst = new Chart(partCanvas, {
       type: 'bar',
-      data: { labels, datasets: [{ label: 'Participation (%)', data: values, backgroundColor: '#0F9E6E', borderRadius: 6, maxBarThickness: 46 }] },
+      data: { labels, datasets: [{ label: 'Participation (%)', data: values, backgroundColor: barGrad, hoverBackgroundColor: barHoverGrad, borderRadius: 8, maxBarThickness: 46 }] },
       options: {
-        plugins: { legend: { display: false } },
+        animation: { duration: 900, easing: 'easeOutQuart', delay: (ctx) => ctx.type === 'data' ? ctx.dataIndex * 90 : 0 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#122318', titleColor: '#EEF2E6', bodyColor: '#EEF2E6',
+            padding: 10, cornerRadius: 8,
+            callbacks: { label: (ctx) => ' Participation : ' + ctx.parsed.y + '%' }
+          }
+        },
         scales: {
-          y: { beginAtZero: true, max: 100, ticks: { color: '#4C5B4D' }, grid: { color: 'rgba(28,42,32,0.08)' } },
+          y: { beginAtZero: true, max: 100, ticks: { color: '#4C5B4D', callback: (v) => v + '%' }, grid: { color: 'rgba(28,42,32,0.08)' } },
           x: { ticks: { color: '#1C2A20', font: { weight: 600 } }, grid: { display: false } }
         }
-      }
+      },
+      plugins: [{
+        id: 'barValueLabels',
+        afterDatasetsDraw(chart) {
+          const { ctx } = chart;
+          chart.getDatasetMeta(0).data.forEach((bar, i) => {
+            const val = chart.data.datasets[0].data[i];
+            if (val === undefined || val === null) return;
+            ctx.save();
+            ctx.font = "700 11px 'IBM Plex Mono', monospace";
+            ctx.fillStyle = '#0B7A55';
+            ctx.textAlign = 'center';
+            ctx.fillText(val + '%', bar.x, bar.y - 8);
+            ctx.restore();
+          });
+        }
+      }]
     });
   }
 }
@@ -908,14 +991,14 @@ function renderPointage() {
     <div class="card empty-state">${ICONS.pointage}<h3 style="color:var(--ink);margin:0 0 6px;">Aucun programme</h3><p>Créez d’abord un programme dans l’onglet Membres.</p></div>`;
   if (!state.pointageProgId) state.pointageProgId = d.programmes[0].id;
   const prog = d.programmes.find(p => p.id === state.pointageProgId);
-  const membres = d.membres.filter(m => memberInProgramme(m, state.pointageProgId));
   const pastSessions = d.sessions.filter(s => s.programmeId === state.pointageProgId).sort((a, b) => b.date.localeCompare(a.date));
 
   let currentPointages = {};
   if (state.pointageSessionId !== 'new') {
     d.pointages.filter(p => p.sessionId === state.pointageSessionId).forEach(p => currentPointages[p.membreId] = p.statut);
   }
-
+  let membres = d.membres.filter(m => memberInProgramme(m, state.pointageProgId));
+  
   return `
     <div class="page-head">
       <div>
@@ -965,7 +1048,7 @@ function memberRow(m, statut) {
   return `<div class="member-row" data-membre="${m.id}">
     <div class="member-avatar">${initials(m.nom, m.prenom)}</div>
     <div class="member-info">
-      <div class="member-name">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</div>
+      <div class="member-name">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}${m.ap ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:10px;">AP</span>` : ''}</div>
       <div class="member-meta">${m.sexe === 'H' ? 'Homme' : 'Femme'}</div>
     </div>
     <div class="status-toggle">
@@ -1024,6 +1107,7 @@ function attachPointageEvents() {
     }
     const rows = document.querySelectorAll('#memberList .member-row');
     let marked = 0;
+    let apTouched = [];
     rows.forEach(row => {
       const membreId = row.dataset.membre;
       const active = row.querySelector('.status-btn.active');
@@ -1032,11 +1116,16 @@ function attachPointageEvents() {
       d.pointages = d.pointages.filter(p => !(p.sessionId === sessionId && p.membreId === membreId));
       d.pointages.push({ id: uid(), sessionId, membreId, statut });
       marked++;
+      const membre = d.membres.find(m => m.id === membreId);
+      if (membre && membre.ap) apTouched.push(membre);
     });
+    const promoted = apTouched.filter(m => checkApPromotion(d, m.id));
     saveData();
     state.pointageSessionId = sessionId;
     state.pointageLabel = '';
-    showToast(marked ? 'Pointage enregistré (' + marked + ' membres)' : 'Aucun statut sélectionné');
+    showToast(marked
+      ? 'Pointage enregistré (' + marked + ' membres)' + (promoted.length ? ' — ' + promoted.map(m => m.prenom + ' ' + m.nom).join(', ') + ' intégré(s) définitivement à la base' : '')
+      : 'Aucun statut sélectionné');
     render();
   });
 }
@@ -1077,6 +1166,14 @@ function renderMembres() {
             ${d.programmes.map(p => `<button type="button" class="chip" data-id="${p.id}">${escapeHtml(p.nom)}</button>`).join('') || '<span style="color:var(--ink-faint);font-size:12.5px;">Créez d’abord un programme.</span>'}
           </div>
         </div>
+        <div class="field" style="margin-bottom:14px;">
+          <label>Type de membre</label>
+          <div class="status-toggle" id="newMembreType">
+            <button type="button" class="status-btn present active" data-ap="0" style="flex:1;">Permanent</button>
+            <button type="button" class="status-btn absent" data-ap="1" style="flex:1;">Ponctuel (AP)</button>
+          </div>
+          <div style="font-size:11.5px;color:var(--ink-faint);margin-top:6px;line-height:1.5;" id="newMembreTypeHint">Membre pointable durablement, dans la base en continu.</div>
+        </div>
         <button class="btn btn-primary" id="addMembreBtn" style="width:100%;justify-content:center;">${ICONS.plus} Ajouter le membre</button>
       </div>
     </div>
@@ -1089,9 +1186,9 @@ function renderMembres() {
 
     <div class="card" style="margin-top:16px;">
       <h3 class="card-title">Tous les membres</h3>
-      <div class="card-sub">${d.membres.length} au total</div>
+      <div class="card-sub">${d.membres.length} au total${d.membres.some(m => m.ap) ? ' · ' + d.membres.filter(m => m.ap).length + ' membre(s) ponctuel(s) (AP)' : ''}</div>
       ${d.membres.length ? `<table class="data-table"><thead><tr><th>Nom</th><th>Sexe</th><th>Programmes</th><th></th></tr></thead><tbody>
-        ${d.membres.map(m => `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button></td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${m.allProgrammes ? `<span class="pill" style="background:var(--emerald-tint);border-color:var(--emerald);color:var(--emerald-dim);">Tous les programmes</span>` : m.programmeIds.map(pid => `<span class="pill">${escapeHtml((d.programmes.find(p => p.id === pid) || {}).nom || '—')}</span>`).join('')}</td><td><button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button></td></tr>`).join('')}
+        ${d.membres.map(m => `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button>${m.ap ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);">AP</span>` : ''}</td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${m.allProgrammes ? `<span class="pill" style="background:var(--emerald-tint);border-color:var(--emerald);color:var(--emerald-dim);">Tous les programmes</span>` : m.programmeIds.map(pid => `<span class="pill">${escapeHtml((d.programmes.find(p => p.id === pid) || {}).nom || '—')}</span>`).join('')}</td><td><button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button></td></tr>`).join('')}
       </tbody></table>` : emptyRow('Aucun membre pour l’instant.')}
     </div>
 
@@ -1167,14 +1264,26 @@ function attachMembresEvents() {
   document.querySelectorAll('#newMembreProgs .chip').forEach(chip => {
     chip.addEventListener('click', () => { chip.classList.toggle('on'); if (chip.classList.contains('on')) selectedProgs.add(chip.dataset.id); else selectedProgs.delete(chip.dataset.id); });
   });
+  document.querySelectorAll('#newMembreType .status-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#newMembreType .status-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const hint = document.getElementById('newMembreTypeHint');
+      hint.textContent = btn.dataset.ap === '1'
+        ? 'Compté à part des effectifs permanents. Intégré définitivement à la base dès qu’il est pointé à plus de 6 séances réparties sur au moins 3 programmes.'
+        : 'Membre pointable durablement, dans la base en continu.';
+    });
+  });
   const addMembre = document.getElementById('addMembreBtn');
   if (addMembre) addMembre.addEventListener('click', () => {
     const prenom = document.getElementById('newPrenom').value.trim();
     const nom = document.getElementById('newNom').value.trim();
     const sexe = document.getElementById('newSexe').value;
     if (!nom || !prenom) { showToast('Nom et prénom requis'); return; }
-    d.membres.push({ id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs) });
-    saveData(); showToast('Membre ajouté'); render();
+    const apBtn = document.querySelector('#newMembreType .status-btn.active');
+    const ap = !!(apBtn && apBtn.dataset.ap === '1');
+    d.membres.push({ id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), ap });
+    saveData(); showToast(ap ? 'Membre ponctuel ajouté (AP)' : 'Membre ajouté'); render();
   });
 
   const dz = document.getElementById('dropZone');
@@ -1497,7 +1606,7 @@ function buildReportDoc(scope, yearFilter, sessionId) {
   }
 
   const progsInScope = scope === 'global' ? d.programmes : d.programmes.filter(p => p.id === scope);
-  const membresInScope = scope === 'global' ? d.membres : d.membres.filter(m => memberInProgramme(m, scope));
+  const membresInScope = (scope === 'global' ? d.membres : d.membres.filter(m => memberInProgramme(m, scope))).filter(m => !m.ap);
   const nbH = membresInScope.filter(m => m.sexe === 'H').length;
   const nbF = membresInScope.filter(m => m.sexe === 'F').length;
   const globalPts = (scope === 'global' ? d.sessions : d.sessions.filter(s => s.programmeId === scope))
