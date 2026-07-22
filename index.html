@@ -436,6 +436,8 @@ let state = {
   confirmMessage: '',
   confirmLabel: 'Confirmer',
   memberDetailId: null,
+  reportScope: 'global',
+  reportSessionId: 'toutes',
 };
 let pendingConfirmAction = null;
 
@@ -458,6 +460,19 @@ function showToast(msg, icon) {
 
 /* ---------- computations ---------- */
 function sessionYear(dateStr) { return (dateStr || '').slice(0, 4); }
+function sessionMonth(dateStr) { return (dateStr || '').slice(0, 7); }
+function periodMatches(dateStr, period) {
+  if (!period || period === 'toutes') return true;
+  if (period.length === 7) return sessionMonth(dateStr) === period;
+  return sessionYear(dateStr) === period;
+}
+function getAvailableMonths(data, progId) {
+  const sessions = progId && progId !== 'global' ? data.sessions.filter(s => s.programmeId === progId) : data.sessions;
+  const set = new Set(sessions.map(s => sessionMonth(s.date)));
+  return Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
+}
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+function monthLabel(ym) { const [y, m] = ym.split('-'); return MOIS_FR[parseInt(m, 10) - 1] + ' ' + y; }
 function getAvailableYears(data) {
   const set = new Set(data.sessions.map(s => sessionYear(s.date)));
   return Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
@@ -474,7 +489,7 @@ function memberStats(data, membreId, yearFilter) {
   data.programmes.forEach(p => {
     if (!m || !memberInProgramme(m, p.id)) return;
     let sessions = data.sessions.filter(s => s.programmeId === p.id);
-    if (yearFilter !== 'toutes') sessions = sessions.filter(s => sessionYear(s.date) === yearFilter);
+    if (yearFilter !== 'toutes') sessions = sessions.filter(s => periodMatches(s.date, yearFilter));
     const sessionIds = sessions.map(s => s.id);
     const pts = data.pointages.filter(pt => pt.membreId === membreId && sessionIds.includes(pt.sessionId));
     const present = pts.filter(pt => pt.statut === 'present').length;
@@ -495,7 +510,7 @@ function memberStats(data, membreId, yearFilter) {
 
 function programStats(data, progId, yearFilter) {
   yearFilter = yearFilter || 'toutes';
-  const sessions = data.sessions.filter(s => s.programmeId === progId && (yearFilter === 'toutes' || sessionYear(s.date) === yearFilter));
+  const sessions = data.sessions.filter(s => s.programmeId === progId && periodMatches(s.date, yearFilter));
   const sessionIds = sessions.map(s => s.id);
   const pts = data.pointages.filter(p => sessionIds.includes(p.sessionId));
   const present = pts.filter(p => p.statut === 'present').length;
@@ -520,7 +535,7 @@ function scopedStats(data, progFilter, yearFilter) {
   const nbF = membres.filter(m => m.sexe === 'F').length;
   const total = membres.length;
   let sessions = progFilter === 'global' ? data.sessions : data.sessions.filter(s => s.programmeId === progFilter);
-  if (yearFilter !== 'toutes') sessions = sessions.filter(s => sessionYear(s.date) === yearFilter);
+  if (yearFilter !== 'toutes') sessions = sessions.filter(s => periodMatches(s.date, yearFilter));
   const sessionIds = sessions.map(s => s.id);
   const pts = data.pointages.filter(p => sessionIds.includes(p.sessionId));
   const present = pts.filter(p => p.statut === 'present').length;
@@ -775,7 +790,7 @@ function renderDashboard() {
         <h3 class="card-title">Détail par séance</h3>
         <div class="card-sub">Taux de présence séance par séance, pour ce programme${yearFilter !== 'toutes' ? ' — ' + yearFilter : ''}</div>
         <div class="ledger">
-          ${d.sessions.filter(s => s.programmeId === filter && (yearFilter === 'toutes' || sessionYear(s.date) === yearFilter)).sort((a,b)=>b.date.localeCompare(a.date)).map(s => {
+          ${d.sessions.filter(s => s.programmeId === filter && periodMatches(s.date, yearFilter)).sort((a,b)=>b.date.localeCompare(a.date)).map(s => {
             const ss = sessionStats(d, s.id);
             return `<div class="ledger-row">
               <div class="prog-name">${fmtDate(s.date)} — ${escapeHtml(s.label)}</div>
@@ -1273,19 +1288,24 @@ function confirmImport() {
 /* ================= RAPPORTS ================= */
 function renderRapports() {
   const d = state.data;
+  const scope = state.reportScope || 'global';
+  const sessionId = state.reportSessionId || 'toutes';
   const scopeOptions = [`<option value="global">Tous les programmes</option>`].concat(
-    d.programmes.map(p => `<option value="${p.id}">${escapeHtml(p.nom)}</option>`)
+    d.programmes.map(p => `<option value="${p.id}" ${scope === p.id ? 'selected' : ''}>${escapeHtml(p.nom)}</option>`)
   ).join('');
   const years = getAvailableYears(d);
-  const yearOptions = [`<option value="toutes">Toutes années</option>`].concat(
-    years.map(y => `<option value="${y}">${y}</option>`)
-  ).join('');
+  const months = getAvailableMonths(d, scope);
+  const periodOptions = `<option value="toutes">Toutes périodes</option>`
+    + (years.length ? `<optgroup label="Par année">${years.map(y => `<option value="${y}">${y}</option>`).join('')}</optgroup>` : '')
+    + (months.length ? `<optgroup label="Par mois">${months.map(mo => `<option value="${mo}">${monthLabel(mo)}</option>`).join('')}</optgroup>` : '');
+  const progSessions = scope !== 'global' ? d.sessions.filter(s => s.programmeId === scope) : [];
+  const sessionOptions = `<option value="toutes" ${sessionId === 'toutes' ? 'selected' : ''}>Toutes les séances</option>` + sessionOptionsByYear(progSessions, sessionId);
   return `
     <div class="page-head">
       <div>
         <div class="eyebrow">Export</div>
         <h1 class="page-title">Rapports</h1>
-        <p class="page-sub">Générez un rapport statistique détaillé, global ou par programme, signé et prêt à partager.</p>
+        <p class="page-sub">Générez un rapport statistique détaillé, global, par programme, par mois ou pour une séance précise, signé et prêt à partager.</p>
       </div>
     </div>
     <div class="grid grid-2">
@@ -1296,13 +1316,19 @@ function renderRapports() {
             <label>Portée</label>
             <select id="reportScope" style="width:100%;">${scopeOptions}</select>
           </div>
-          <div class="field" style="flex:1;">
-            <label>Année</label>
-            <select id="reportYear" style="width:100%;">${yearOptions}</select>
-          </div>
+          ${scope !== 'global' ? `<div class="field" style="flex:1;">
+            <label>Séance</label>
+            <select id="reportSession" style="width:100%;">${sessionOptions}</select>
+          </div>` : ''}
+          ${sessionId === 'toutes' ? `<div class="field" style="flex:1;">
+            <label>Période</label>
+            <select id="reportYear" style="width:100%;">${periodOptions}</select>
+          </div>` : ''}
         </div>
         <p style="font-size:12.5px;color:var(--ink-faint);line-height:1.6;">
-          Le rapport inclura : effectifs, répartition Hommes/Femmes, taux de présence, taux d’absence et taux de participation — globaux ou filtrés selon la portée et l’année choisies.
+          ${sessionId !== 'toutes' && scope !== 'global'
+            ? 'Le rapport listera la présence de chaque membre pour cette séance précise, avec le taux de présence associé.'
+            : 'Le rapport inclura : effectifs, répartition Hommes/Femmes, taux de présence, taux d’absence et taux de participation — globaux ou filtrés selon la portée et la période choisies (année entière ou un mois précis).'}
         </p>
         <div style="margin-top:18px;">
           <button class="btn btn-primary" id="genPdfBtn">${ICONS.download} Générer le PDF</button>
@@ -1325,13 +1351,32 @@ function renderRapports() {
 }
 
 function attachRapportsEvents() {
+  const scopeSel = document.getElementById('reportScope');
+  if (scopeSel) scopeSel.addEventListener('change', e => {
+    state.reportScope = e.target.value;
+    state.reportSessionId = 'toutes';
+    render();
+  });
+  const sessionSel = document.getElementById('reportSession');
+  if (sessionSel) sessionSel.addEventListener('change', e => {
+    state.reportSessionId = e.target.value;
+    render();
+  });
+  const yearSel = document.getElementById('reportYear');
+  if (yearSel) yearSel.addEventListener('change', e => { state.reportYear = e.target.value; });
   const genBtn = document.getElementById('genPdfBtn');
-  if (genBtn) genBtn.addEventListener('click', () => downloadPdf(document.getElementById('reportScope').value, document.getElementById('reportYear').value));
+  if (genBtn) genBtn.addEventListener('click', () => {
+    const scope = state.reportScope || 'global';
+    const sessionId = state.reportSessionId || 'toutes';
+    const yearVal = document.getElementById('reportYear') ? document.getElementById('reportYear').value : 'toutes';
+    if (sessionId !== 'toutes' && scope !== 'global') downloadPdf(scope, 'toutes', sessionId);
+    else downloadPdf(scope, yearVal);
+  });
   const changeSigBtn = document.getElementById('changeSignataireBtn');
   if (changeSigBtn) changeSigBtn.addEventListener('click', renameSignataire);
 }
 
-function buildReportDoc(scope, yearFilter) {
+function buildReportDoc(scope, yearFilter, sessionId) {
   yearFilter = yearFilter || 'toutes';
   const d = state.data;
   const { jsPDF } = window.jspdf;
@@ -1364,17 +1409,99 @@ function buildReportDoc(scope, yearFilter) {
   doc.text('Rapport de présence', margin + 17, 21.5);
   // Méta à droite
   doc.setFontSize(9); doc.setTextColor(230, 240, 235);
+  const session = sessionId && sessionId !== 'toutes' ? d.sessions.find(s => s.id === sessionId) : null;
   doc.text(scopeLabel, pageW - margin, 13, { align: 'right' });
-  doc.text((yearFilter !== 'toutes' ? 'Année ' + yearFilter + '  ·  ' : '') + fmtDate(todayISO()) + ' à ' + nowTime(), pageW - margin, 18.5, { align: 'right' });
+  if (session) {
+    doc.text(session.label, pageW - margin, 18.5, { align: 'right' });
+    doc.text(fmtDate(session.date) + '  ·  généré le ' + fmtDate(todayISO()) + ' à ' + nowTime(), pageW - margin, 23.5, { align: 'right' });
+  } else {
+    const periodLabel = yearFilter === 'toutes' ? '' : (yearFilter.length === 7 ? monthLabel(yearFilter) : 'Année ' + yearFilter) + '  ·  ';
+    doc.text(periodLabel + fmtDate(todayISO()) + ' à ' + nowTime(), pageW - margin, 18.5, { align: 'right' });
+  }
 
   let y = 48;
+
+  // ============ RAPPORT D'UNE SÉANCE PRÉCISE ============
+  if (session) {
+    const membresSession = d.membres.filter(m => memberInProgramme(m, session.programmeId));
+    const pointagesSession = d.pointages.filter(p => p.sessionId === session.id);
+    const statutOf = (membreId) => { const pt = pointagesSession.find(p => p.membreId === membreId); return pt ? pt.statut : null; };
+    const present = pointagesSession.filter(p => p.statut === 'present').length;
+    const absent = pointagesSession.filter(p => p.statut === 'absent').length;
+    const total = present + absent;
+    const taux = total ? Math.round((present / total) * 100) : 0;
+
+    doc.setFont('times', 'bold'); doc.setFontSize(12.5); doc.setTextColor(...ink);
+    doc.text('Séance : ' + session.label, margin, y);
+    y += 6;
+
+    const cardGap = 5;
+    const cardW = (contentW - cardGap * 2) / 3;
+    const cardH = 22;
+    const cards = [
+      { label: 'Présents', value: String(present), color: emerald },
+      { label: 'Absents', value: String(absent), color: terracotta },
+      { label: 'Taux de présence', value: taux + '%', color: emerald },
+    ];
+    cards.forEach((c, i) => {
+      const cx = margin + i * (cardW + cardGap);
+      doc.setFillColor(247, 247, 242);
+      doc.roundedRect(cx, y, cardW, cardH, 2.4, 2.4, 'F');
+      doc.setFillColor(...c.color);
+      doc.roundedRect(cx, y, 2.2, cardH, 1.1, 1.1, 'F');
+      doc.setFont('times', 'bold'); doc.setFontSize(15); doc.setTextColor(...c.color);
+      doc.text(c.value, cx + 6, y + 12);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...faint);
+      doc.text(c.label, cx + 6, y + 17.5);
+    });
+    y += cardH + 12;
+
+    doc.setFont('times', 'bold'); doc.setFontSize(12.5); doc.setTextColor(...ink);
+    doc.text('Liste de présence', margin, y);
+    y += 9;
+
+    const ensureSpace2 = (needed) => { if (y + needed > 280) { doc.addPage(); y = 22; } };
+    membresSession.sort((a, b) => (a.nom + a.prenom).localeCompare(b.nom + b.prenom)).forEach((m, i) => {
+      ensureSpace2(9);
+      const statut = statutOf(m.id);
+      if (i % 2 === 0) { doc.setFillColor(247, 247, 242); doc.rect(margin, y - 5.5, contentW, 8, 'F'); }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...ink);
+      doc.text(m.prenom + ' ' + m.nom, margin + 3, y);
+      const label = statut === 'present' ? 'Présent' : statut === 'absent' ? 'Absent' : 'Non pointé';
+      const color = statut === 'present' ? emerald : statut === 'absent' ? terracotta : faint;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...color);
+      doc.text(label, pageW - margin - 3, y, { align: 'right' });
+      y += 8;
+    });
+    if (!membresSession.length) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...faint);
+      doc.text('Aucun membre inscrit à ce programme.', margin, y);
+      y += 8;
+    }
+
+    const totalPagesSess = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPagesSess; i++) {
+      doc.setPage(i);
+      const pageH = doc.internal.pageSize.getHeight();
+      doc.setDrawColor(...track);
+      doc.line(margin, pageH - 22, pageW - margin, pageH - 22);
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9.5); doc.setTextColor(...ink);
+      doc.text('Signé par ' + d.profile.name + ' — Commission Administrative', margin, pageH - 15);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...faint);
+      doc.text('Généré automatiquement par Carnet le ' + fmtDate(todayISO()) + ' à ' + nowTime(), margin, pageH - 10.5);
+      doc.text('Page ' + i + ' / ' + totalPagesSess, pageW - margin, pageH - 10.5, { align: 'right' });
+    }
+
+    const filenameSess = 'pointage-' + scopeLabel.toLowerCase().replace(/\s+/g, '-') + '-' + session.date + '.pdf';
+    return { doc, filename: filenameSess };
+  }
 
   const progsInScope = scope === 'global' ? d.programmes : d.programmes.filter(p => p.id === scope);
   const membresInScope = scope === 'global' ? d.membres : d.membres.filter(m => memberInProgramme(m, scope));
   const nbH = membresInScope.filter(m => m.sexe === 'H').length;
   const nbF = membresInScope.filter(m => m.sexe === 'F').length;
   const globalPts = (scope === 'global' ? d.sessions : d.sessions.filter(s => s.programmeId === scope))
-    .filter(s => yearFilter === 'toutes' || sessionYear(s.date) === yearFilter)
+    .filter(s => periodMatches(s.date, yearFilter))
     .map(s => s.id);
   const ptsInScope = d.pointages.filter(p => globalPts.includes(p.sessionId));
   const presentCount = ptsInScope.filter(p => p.statut === 'present').length;
@@ -1467,8 +1594,8 @@ function buildReportDoc(scope, yearFilter) {
   return { doc, filename };
 }
 
-function downloadPdf(scope, yearFilter) {
-  const { doc, filename } = buildReportDoc(scope, yearFilter);
+function downloadPdf(scope, yearFilter, sessionId) {
+  const { doc, filename } = buildReportDoc(scope, yearFilter, sessionId);
   doc.save(filename);
   showToast('Rapport PDF téléchargé');
 }
