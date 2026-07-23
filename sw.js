@@ -1,7 +1,7 @@
 // sw.js — Carnet
 // Stratégie : Stale-While-Revalidate pour les ressources de l'app,
 // + cache des assets externes utilisés (CDN, polices) et fallback navigation hors-ligne.
-const CACHE_NAME = 'carnet-v5';
+const CACHE_NAME = 'carnet-v6';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -10,6 +10,8 @@ const CORE_ASSETS = [
   './icons/icon-512-v2.png',
   './icons/icon-512-maskable-v2.png',
   './icons/apple-touch-icon-v2.png',
+  './icons/apple-touch-icon.png',
+  './apple-touch-icon.png',
   './icons/favicon-v2.png',
 ];
 
@@ -28,12 +30,11 @@ self.addEventListener('install', (event) => {
     (async () => {
       const cache = await caches.open(CACHE_NAME);
       try {
-        // Essayer d'ajouter tous les assets (internes + externes).
-        await cache.addAll([...CORE_ASSETS, ...EXTERNAL_ASSETS]);
+        await Promise.allSettled(
+          [...CORE_ASSETS, ...EXTERNAL_ASSETS].map((asset) => cache.add(asset).catch(() => undefined))
+        );
       } catch (err) {
-        // Si un des assets externes échoue, on ne bloque pas l'installation —
-        // on a déjà mis en cache les fichiers essentiels via `CORE_ASSETS`.
-        try { await cache.addAll(CORE_ASSETS); } catch (e) { /* noop */ }
+        try { await Promise.allSettled(CORE_ASSETS.map((asset) => cache.add(asset).catch(() => undefined))); } catch (e) { /* noop */ }
       }
     })()
   );
