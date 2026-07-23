@@ -12,11 +12,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Carnet">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-v2.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192-v2.png">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-v2.png">
-<link rel="apple-touch-icon-precomposed" sizes="180x180" href="icons/apple-touch-icon-v2.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-v2.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192-v2.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon-precomposed.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -336,7 +336,23 @@
     .brand{ border:none; padding:0; margin:0; margin-right:14px; }
     .brand-sub{ display:none; }
     nav.tabs{ flex-direction:row; }
-    .sidebar-footer{ display:none; }
+    .sidebar-footer{ 
+      display:flex; 
+      align-items:center; 
+      justify-content:flex-end; 
+      margin-left:auto; 
+      padding-top:0; 
+      border-top:none; 
+    }
+    .sidebar-org, .user-chip{ display:none; }
+    .sidebar-footer .signOutBtn{
+      margin:0; 
+      padding:6px 10px; 
+      border:1px solid rgba(237,241,229,0.2); 
+      border-radius:999px; 
+      color:var(--cover-ink); 
+      background:rgba(255,255,255,0.08);
+    }
     main{ padding:22px 18px 50px; }
   }
 </style>
@@ -686,7 +702,7 @@ function render() {
           </div>
           <button class="edit-name-btn" id="editNameBtn">modifier</button>
         </div>
-        ${sb && sbUser ? `<button class="edit-name-btn" id="signOutBtn" style="margin-top:8px;">se déconnecter</button>` : ''}
+        ${sb && sbUser ? `<button class="edit-name-btn signOutBtn" id="signOutBtn" style="margin-top:8px;">se déconnecter</button>` : ''}
       </div>
     </aside>
     <main><div class="view" id="view">${renderTab()}</div></main>
