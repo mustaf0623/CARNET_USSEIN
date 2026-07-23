@@ -22,6 +22,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
     color-scheme: light;
@@ -413,6 +414,99 @@ async function idbSet(key, value) {
   });
 }
 
+/* ---------- Supabase (synchronisation multi-appareils) ----------
+   À CONFIGURER : voir supabase-setup.sql pour créer les tables, puis
+   collez ci-dessous l'URL et la clé "anon" de votre projet Supabase
+   (Project Settings → API). Tant que ce n'est pas fait, l'app
+   fonctionne normalement en local uniquement (comme avant).
+------------------------------------------------------------------- */
+const SUPABASE_URL = 'https://jqbnwdcxewoflwflqqfg.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY = 'sb_publishable_J9V41kIvkiYH8VFu0n81KQ_ne6tvzvk';
+function supabaseConfigured() { return !SUPABASE_URL.startsWith('VOTRE_') && !SUPABASE_ANON_KEY.startsWith('VOTRE_'); }
+
+let sb = null;
+let sbUser = null;
+const snapshotMaps = { programmes: new Map(), membres: new Map(), sessions: new Map(), pointages: new Map() };
+
+function updateSnapshotsFromCurrent() {
+  snapshotMaps.programmes = new Map(state.data.programmes.map(r => [r.id, JSON.stringify(r)]));
+  snapshotMaps.membres = new Map(state.data.membres.map(r => [r.id, JSON.stringify(r)]));
+  snapshotMaps.sessions = new Map(state.data.sessions.map(r => [r.id, JSON.stringify(r)]));
+  snapshotMaps.pointages = new Map(state.data.pointages.map(r => [r.id, JSON.stringify(r)]));
+}
+
+async function pullFromSupabase() {
+  const [progRes, memRes, sessRes, ptRes, profRes] = await Promise.all([
+    sb.from('programmes').select('*'),
+    sb.from('membres').select('*'),
+    sb.from('sessions').select('*'),
+    sb.from('pointages').select('*'),
+    sb.from('profiles').select('*').eq('id', sbUser.id).maybeSingle(),
+  ]);
+  if (progRes.error) throw progRes.error;
+  const programmes = (progRes.data || []).map(r => ({ id: r.id, nom: r.nom }));
+  const membres = (memRes.data || []).map(r => ({ id: r.id, nom: r.nom, prenom: r.prenom, sexe: r.sexe, programmeIds: r.programme_ids || [], allProgrammes: !!r.all_programmes, ap: !!r.ap }));
+  const sessions = (sessRes.data || []).map(r => ({ id: r.id, programmeId: r.programme_id, date: r.date, label: r.label }));
+  const pointages = (ptRes.data || []).map(r => ({ id: r.id, sessionId: r.session_id, membreId: r.membre_id, statut: r.statut }));
+  const name = (profRes.data && profRes.data.name) || '';
+  return { profile: { name }, programmes, membres, sessions, pointages };
+}
+
+async function syncTable(tableName, rows, toRemote, prevMap) {
+  const currMap = new Map(rows.map(r => [r.id, JSON.stringify(r)]));
+  const toUpsert = [];
+  currMap.forEach((json, id) => { if (prevMap.get(id) !== json) toUpsert.push(JSON.parse(json)); });
+  const toDelete = [];
+  prevMap.forEach((_, id) => { if (!currMap.has(id)) toDelete.push(id); });
+  if (toUpsert.length) { const { error } = await sb.from(tableName).upsert(toUpsert.map(toRemote)); if (error) throw error; }
+  if (toDelete.length) { const { error } = await sb.from(tableName).delete().in('id', toDelete); if (error) throw error; }
+  return currMap;
+}
+
+let syncing = false;
+async function pushToSupabase() {
+  if (!sb || !sbUser || syncing) return;
+  syncing = true;
+  try {
+    snapshotMaps.programmes = await syncTable('programmes', state.data.programmes, p => ({ id: p.id, nom: p.nom }), snapshotMaps.programmes);
+    snapshotMaps.membres = await syncTable('membres', state.data.membres, m => ({ id: m.id, nom: m.nom, prenom: m.prenom, sexe: m.sexe, programme_ids: m.programmeIds || [], all_programmes: !!m.allProgrammes, ap: !!m.ap }), snapshotMaps.membres);
+    snapshotMaps.sessions = await syncTable('sessions', state.data.sessions, s => ({ id: s.id, programme_id: s.programmeId, date: s.date, label: s.label }), snapshotMaps.sessions);
+    snapshotMaps.pointages = await syncTable('pointages', state.data.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut }), snapshotMaps.pointages);
+    try { await sb.from('profiles').upsert({ id: sbUser.id, name: state.data.profile.name }); } catch (e) { /* non bloquant */ }
+  } catch (e) {
+    showToast('Échec de synchronisation — données gardées en local');
+  } finally {
+    syncing = false;
+  }
+}
+
+let remoteChangeTimer = null;
+function handleRemoteChange() {
+  clearTimeout(remoteChangeTimer);
+  remoteChangeTimer = setTimeout(async () => {
+    try {
+      const remote = await pullFromSupabase();
+      state.data.programmes = remote.programmes;
+      state.data.membres = remote.membres;
+      state.data.sessions = remote.sessions;
+      state.data.pointages = remote.pointages;
+      updateSnapshotsFromCurrent();
+      await idbSet('carnet-data', state.data);
+      showToast('Données mises à jour depuis un autre appareil');
+      render();
+    } catch (e) { /* on retentera au prochain changement */ }
+  }, 900);
+}
+function subscribeRealtime() {
+  if (!sb || !sbUser) return;
+  sb.channel('carnet-sync')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'programmes' }, handleRemoteChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'membres' }, handleRemoteChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, handleRemoteChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pointages' }, handleRemoteChange)
+    .subscribe();
+}
+
 function emptyData() {
   return { profile: { name: '' }, programmes: [], membres: [], sessions: [], pointages: [] };
 }
@@ -426,6 +520,7 @@ let state = {
   pointageSessionId: 'new',
   pointageDate: todayISO(),
   pointageLabel: '',
+  pointageFastMode: true,
   importStep: 0,
   importRows: [],
   importHeaders: [],
@@ -448,6 +543,7 @@ async function loadData() {
 async function saveData() {
   try { await idbSet('carnet-data', state.data); }
   catch (e) { showToast('Échec de la sauvegarde locale'); }
+  if (sb && sbUser) pushToSupabase();
 }
 
 function showToast(msg, icon) {
@@ -590,6 +686,7 @@ function render() {
           </div>
           <button class="edit-name-btn" id="editNameBtn">modifier</button>
         </div>
+        ${sb && sbUser ? `<button class="edit-name-btn" id="signOutBtn" style="margin-top:8px;">se déconnecter</button>` : ''}
       </div>
     </aside>
     <main><div class="view" id="view">${renderTab()}</div></main>
@@ -732,6 +829,8 @@ function attachShellEvents() {
   }));
   const editBtn = document.getElementById('editNameBtn');
   if (editBtn) editBtn.addEventListener('click', renameSignataire);
+  const signOutBtn = document.getElementById('signOutBtn');
+  if (signOutBtn) signOutBtn.addEventListener('click', signOutSupabase);
 }
 
 /* ================= ONBOARDING ================= */
@@ -1026,9 +1125,15 @@ function renderPointage() {
     </div>
     <div class="card">
       <h3 class="card-title">${escapeHtml(prog.nom)}</h3>
-      <div class="card-sub">${membres.length} membre${membres.length > 1 ? 's' : ''} inscrit${membres.length > 1 ? 's' : ''}</div>
+      <div class="card-sub" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span>${membres.length} membre${membres.length > 1 ? 's' : ''} inscrit${membres.length > 1 ? 's' : ''}</span>
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-dim);font-weight:600;cursor:pointer;">
+          <input type="checkbox" id="fastModeToggle" ${state.pointageFastMode ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--emerald);">
+          Pointage rapide — cocher les présents, le reste compte absent
+        </label>
+      </div>
       <div id="memberList">
-        ${membres.length ? membres.map(m => memberRow(m, currentPointages[m.id])).join('') : emptyRow('Aucun membre inscrit à ce programme.')}
+        ${membres.length ? membres.map(m => memberRow(m, currentPointages[m.id], state.pointageFastMode)).join('') : emptyRow('Aucun membre inscrit à ce programme.')}
       </div>
       ${membres.length ? `<div style="margin-top:20px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         ${state.pointageSessionId !== 'new' ? `<button class="btn btn-ghost" id="deleteSessionBtn" style="color:var(--terracotta);border-color:var(--terracotta-tint);">Supprimer cette séance</button>` : '<span></span>'}
@@ -1044,17 +1149,22 @@ function sessionOptionsByYear(sessions, selectedId) {
     `<optgroup label="${y}">${byYear[y].map(s => `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${fmtDate(s.date)} — ${escapeHtml(s.label)}</option>`).join('')}</optgroup>`
   ).join('');
 }
-function memberRow(m, statut) {
+function memberRow(m, statut, fastMode) {
+  const statusHtml = fastMode
+    ? `<div class="status-toggle">
+      <button class="status-btn present ${statut === 'present' ? 'active' : ''}" data-statut="present" style="min-width:110px;">${statut === 'present' ? '✓ Présent' : 'Marquer présent'}</button>
+    </div>`
+    : `<div class="status-toggle">
+      <button class="status-btn present ${statut === 'present' ? 'active' : ''}" data-statut="present">Présent</button>
+      <button class="status-btn absent ${statut === 'absent' ? 'active' : ''}" data-statut="absent">Absent</button>
+    </div>`;
   return `<div class="member-row" data-membre="${m.id}">
     <div class="member-avatar">${initials(m.nom, m.prenom)}</div>
     <div class="member-info">
       <div class="member-name">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}${m.ap ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:10px;">AP</span>` : ''}</div>
       <div class="member-meta">${m.sexe === 'H' ? 'Homme' : 'Femme'}</div>
     </div>
-    <div class="status-toggle">
-      <button class="status-btn present ${statut === 'present' ? 'active' : ''}" data-statut="present">Présent</button>
-      <button class="status-btn absent ${statut === 'absent' ? 'active' : ''}" data-statut="absent">Absent</button>
-    </div>
+    ${statusHtml}
   </div>`;
 }
 function attachPointageEvents() {
@@ -1063,6 +1173,8 @@ function attachPointageEvents() {
   if (progSel) progSel.addEventListener('change', e => { state.pointageProgId = e.target.value; state.pointageSessionId = 'new'; render(); });
   const sessSel = document.getElementById('sessionSelect');
   if (sessSel) sessSel.addEventListener('change', e => { state.pointageSessionId = e.target.value; render(); });
+  const fastToggle = document.getElementById('fastModeToggle');
+  if (fastToggle) fastToggle.addEventListener('change', e => { state.pointageFastMode = e.target.checked; render(); });
   const dateInput = document.getElementById('sessionDate');
   if (dateInput) dateInput.addEventListener('change', e => state.pointageDate = e.target.value);
   const labelInput = document.getElementById('sessionLabel');
@@ -1087,9 +1199,16 @@ function attachPointageEvents() {
   document.querySelectorAll('.status-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const row = btn.closest('.member-row');
-      row.querySelectorAll('.status-btn').forEach(b => { b.classList.remove('active'); b.querySelector('.stamp')?.remove(); });
+      const wasActive = btn.classList.contains('active');
+      const onlyOneBtn = row.querySelectorAll('.status-btn').length === 1;
+      row.querySelectorAll('.status-btn').forEach(b => {
+        b.classList.remove('active'); b.querySelector('.stamp')?.remove();
+        if (onlyOneBtn) b.textContent = 'Marquer présent';
+      });
+      if (onlyOneBtn && wasActive) return; // re-clic sur "Présent" déjà actif : on le désactive (redevient absent)
       btn.classList.add('active');
       if (btn.dataset.statut === 'present') {
+        btn.textContent = '✓ Présent';
         const s = document.createElement('span'); s.className = 'stamp'; s.innerHTML = ICONS.stamp;
         btn.appendChild(s);
       }
@@ -1111,8 +1230,10 @@ function attachPointageEvents() {
     rows.forEach(row => {
       const membreId = row.dataset.membre;
       const active = row.querySelector('.status-btn.active');
-      if (!active) return;
-      const statut = active.dataset.statut;
+      let statut;
+      if (active) statut = active.dataset.statut;
+      else if (state.pointageFastMode) statut = 'absent';
+      else return;
       d.pointages = d.pointages.filter(p => !(p.sessionId === sessionId && p.membreId === membreId));
       d.pointages.push({ id: uid(), sessionId, membreId, statut });
       marked++;
@@ -1161,18 +1282,18 @@ function renderMembres() {
           <select id="newSexe" style="width:100%;"><option value="H">Homme</option><option value="F">Femme</option></select>
         </div>
         <div class="field" style="margin-bottom:14px;">
-          <label>Programmes</label>
-          <div class="chip-select" id="newMembreProgs">
-            ${d.programmes.map(p => `<button type="button" class="chip" data-id="${p.id}">${escapeHtml(p.nom)}</button>`).join('') || '<span style="color:var(--ink-faint);font-size:12.5px;">Créez d’abord un programme.</span>'}
-          </div>
-        </div>
-        <div class="field" style="margin-bottom:14px;">
           <label>Type de membre</label>
           <div class="status-toggle" id="newMembreType">
             <button type="button" class="status-btn present active" data-ap="0" style="flex:1;">Permanent</button>
             <button type="button" class="status-btn absent" data-ap="1" style="flex:1;">Ponctuel (AP)</button>
           </div>
-          <div style="font-size:11.5px;color:var(--ink-faint);margin-top:6px;line-height:1.5;" id="newMembreTypeHint">Membre pointable durablement, dans la base en continu.</div>
+          <div style="font-size:11.5px;color:var(--ink-faint);margin-top:6px;line-height:1.5;" id="newMembreTypeHint">Automatiquement pointable dans tous les programmes déjà créés et ceux à venir.</div>
+        </div>
+        <div class="field" style="margin-bottom:14px;" id="newMembreProgsField">
+          <label>Programmes</label>
+          <div class="chip-select" id="newMembreProgs">
+            ${d.programmes.map(p => `<button type="button" class="chip" data-id="${p.id}">${escapeHtml(p.nom)}</button>`).join('') || '<span style="color:var(--ink-faint);font-size:12.5px;">Créez d’abord un programme.</span>'}
+          </div>
         </div>
         <button class="btn btn-primary" id="addMembreBtn" style="width:100%;justify-content:center;">${ICONS.plus} Ajouter le membre</button>
       </div>
@@ -1264,14 +1385,18 @@ function attachMembresEvents() {
   document.querySelectorAll('#newMembreProgs .chip').forEach(chip => {
     chip.addEventListener('click', () => { chip.classList.toggle('on'); if (chip.classList.contains('on')) selectedProgs.add(chip.dataset.id); else selectedProgs.delete(chip.dataset.id); });
   });
+  const progsField = document.getElementById('newMembreProgsField');
+  if (progsField) progsField.style.display = 'none';
   document.querySelectorAll('#newMembreType .status-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#newMembreType .status-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      const isAp = btn.dataset.ap === '1';
       const hint = document.getElementById('newMembreTypeHint');
-      hint.textContent = btn.dataset.ap === '1'
-        ? 'Compté à part des effectifs permanents. Intégré définitivement à la base dès qu’il est pointé à plus de 6 séances réparties sur au moins 3 programmes.'
-        : 'Membre pointable durablement, dans la base en continu.';
+      hint.textContent = isAp
+        ? 'Compté à part des effectifs permanents, uniquement sur les programmes choisis ci-dessous. Intégré définitivement à la base — et pointable partout — dès qu’il est pointé à plus de 6 séances réparties sur au moins 3 programmes.'
+        : 'Automatiquement pointable dans tous les programmes déjà créés et ceux à venir.';
+      if (progsField) progsField.style.display = isAp ? '' : 'none';
     });
   });
   const addMembre = document.getElementById('addMembreBtn');
@@ -1282,8 +1407,11 @@ function attachMembresEvents() {
     if (!nom || !prenom) { showToast('Nom et prénom requis'); return; }
     const apBtn = document.querySelector('#newMembreType .status-btn.active');
     const ap = !!(apBtn && apBtn.dataset.ap === '1');
-    d.membres.push({ id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), ap });
-    saveData(); showToast(ap ? 'Membre ponctuel ajouté (AP)' : 'Membre ajouté'); render();
+    const membre = ap
+      ? { id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), allProgrammes: false, ap: true }
+      : { id: uid(), nom, prenom, sexe, programmeIds: [], allProgrammes: true, ap: false };
+    d.membres.push(membre);
+    saveData(); showToast(ap ? 'Membre ponctuel ajouté (AP)' : 'Membre ajouté — pointable dans tous les programmes'); render();
   });
 
   const dz = document.getElementById('dropZone');
@@ -1784,18 +1912,90 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+/* ================= AUTH (Supabase) ================= */
+let authMode = 'login'; // 'login' | 'signup'
+function renderAuthScreen(errorMsg) {
+  document.getElementById('app').innerHTML = `
+  <div class="onboard-overlay" style="position:fixed;">
+    <div class="onboard-card">
+      <div class="onboard-mark">${ICONS.mark}</div>
+      <h2>${authMode === 'login' ? 'Se connecter' : 'Créer un compte'}</h2>
+      <p>Connectez-vous pour retrouver les mêmes données sur tous vos appareils.</p>
+      ${errorMsg ? `<p style="color:var(--terracotta);font-size:12.5px;margin-top:-10px;">${escapeHtml(errorMsg)}</p>` : ''}
+      <input type="text" id="authEmail" placeholder="Adresse e-mail" autocomplete="username" style="margin-bottom:10px;" />
+      <input type="password" id="authPassword" placeholder="Mot de passe" autocomplete="current-password" />
+      <button class="btn btn-primary" id="authSubmitBtn" style="width:100%;justify-content:center;margin-top:14px;margin-bottom:10px;">${authMode === 'login' ? 'Se connecter' : 'Créer le compte'}</button>
+      <button class="btn btn-ghost" id="authToggleBtn" style="width:100%;justify-content:center;">${authMode === 'login' ? 'Pas encore de compte ? En créer un' : 'Déjà un compte ? Se connecter'}</button>
+    </div>
+  </div>`;
+  document.getElementById('authSubmitBtn').addEventListener('click', submitAuth);
+  document.getElementById('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+  document.getElementById('authToggleBtn').addEventListener('click', () => { authMode = authMode === 'login' ? 'signup' : 'login'; renderAuthScreen(); });
+}
+async function submitAuth() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if (!email || !password) { renderAuthScreen('Merci de renseigner un e-mail et un mot de passe.'); return; }
+  const btn = document.getElementById('authSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Un instant…';
+  try {
+    const fn = authMode === 'login' ? sb.auth.signInWithPassword : sb.auth.signUp;
+    const { data, error } = await fn.call(sb.auth, { email, password });
+    if (error) { renderAuthScreen(error.message); return; }
+    if (authMode === 'signup' && !data.session) {
+      renderAuthScreen('Compte créé — vérifiez votre e-mail pour confirmer, puis connectez-vous.');
+      authMode = 'login';
+      return;
+    }
+    sbUser = data.user;
+    await startApp();
+  } catch (e) {
+    renderAuthScreen('Connexion impossible. Vérifiez votre réseau et réessayez.');
+  } finally {
+    btn.disabled = false; btn.textContent = authMode === 'login' ? 'Se connecter' : 'Créer le compte';
+  }
+}
+async function signOutSupabase() {
+  if (!sb) return;
+  await sb.auth.signOut();
+  sbUser = null;
+  location.reload();
+}
+
 /* ================= INIT ================= */
+async function startApp() {
+  let data;
+  if (sb && sbUser) {
+    try {
+      data = await pullFromSupabase();
+      if (!data.profile.name) { const local = await loadData(); if (local && local.profile.name) data.profile.name = local.profile.name; }
+      await idbSet('carnet-data', data);
+    } catch (e) {
+      data = await loadData() || emptyData();
+      showToast('Connexion au serveur impossible — mode hors-ligne local');
+    }
+  } else {
+    data = await loadData() || emptyData();
+  }
+  state.data = data;
+  if (sb && sbUser) { updateSnapshotsFromCurrent(); subscribeRealtime(); }
+  render();
+}
+
 (async function init() {
   const minSplash = new Promise(res => setTimeout(res, 1250));
-  const dataPromise = (async () => {
-    let data = await loadData();
-    if (!data) data = emptyData();
-    return data;
-  })();
-  const [data] = await Promise.all([dataPromise, minSplash]);
-  state.data = data;
-  render();
+  if (supabaseConfigured() && window.supabase) {
+    try {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const { data: { session } } = await sb.auth.getSession();
+      sbUser = session ? session.user : null;
+      sb.auth.onAuthStateChange((event, session) => { sbUser = session ? session.user : null; });
+    } catch (e) { sb = null; }
+  }
+  await minSplash;
   document.getElementById('splash').classList.add('hide');
+  if (sb && !sbUser) { renderAuthScreen(); return; }
+  await startApp();
 })();
 </script>
 </body>
