@@ -420,7 +420,7 @@ async function idbSet(key, value) {
    (Project Settings → API). Tant que ce n'est pas fait, l'app
    fonctionne normalement en local uniquement (comme avant).
 ------------------------------------------------------------------- */
-const SUPABASE_URL = 'https://jqbnwdcxewoflwflqqfg.supabase.co/rest/v1/';
+const SUPABASE_URL ='https://jqbnwdcxewoflwflqqfg.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_J9V41kIvkiYH8VFu0n81KQ_ne6tvzvk';
 function supabaseConfigured() { return !SUPABASE_URL.startsWith('VOTRE_') && !SUPABASE_ANON_KEY.startsWith('VOTRE_'); }
 
