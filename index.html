@@ -606,6 +606,40 @@ async function saveData() {
   if (sb && sbUser) pushToSupabase();
 }
 
+async function resetAppData() {
+  const keepName = state.data?.profile?.name || '';
+  state.data = emptyData();
+  state.data.profile.name = keepName;
+  state.tab = 'dashboard';
+  state.dashProgFilter = 'global';
+  state.dashYearFilter = 'toutes';
+  state.pointageProgId = null;
+  state.pointageSessionId = 'new';
+  state.pointageDate = todayISO();
+  state.pointageLabel = '';
+  state.pointageFastMode = true;
+  state.importStep = 0;
+  state.importRows = [];
+  state.importHeaders = [];
+  state.importMapping = {};
+  state.renameModalOpen = false;
+  state.confirmModalOpen = false;
+  state.memberDetailId = null;
+  state.reportScope = 'global';
+  state.reportSessionId = 'toutes';
+  pendingConfirmAction = null;
+  snapshotMaps.programmes = new Map();
+  snapshotMaps.membres = new Map();
+  snapshotMaps.sessions = new Map();
+  snapshotMaps.pointages = new Map();
+
+  try { await idbDelete('carnet-data'); } catch (e) { /* noop */ }
+  try { await idbSet('carnet-data', state.data); } catch (e) { /* noop */ }
+
+  render();
+  showToast('Données locales réinitialisées');
+}
+
 function showToast(msg, icon) {
   const t = document.getElementById('toast');
   t.innerHTML = (icon || '') + '<span>' + msg + '</span>';
@@ -1528,14 +1562,7 @@ function attachMembresEvents() {
     openConfirm(
       'Réinitialiser toutes les données ?',
       'Programmes, membres, séances et pointages seront définitivement supprimés. Cette action est irréversible.',
-      async () => {
-        const name = state.data.profile.name;
-        state.data = emptyData();
-        state.data.profile.name = name;
-        state.dashProgFilter = 'global'; state.dashYearFilter = 'toutes';
-        state.pointageProgId = null; state.pointageSessionId = 'new';
-        await saveData(); showToast('Données réinitialisées'); render();
-      },
+      resetAppData,
       'Réinitialiser'
     );
   });
