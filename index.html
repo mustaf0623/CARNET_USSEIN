@@ -512,7 +512,8 @@ async function pushToSupabase() {
     snapshotMaps.pointages = await syncTable('pointages', state.data.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut }), snapshotMaps.pointages);
     try { await sb.from('profiles').upsert({ id: sbUser.id, name: state.data.profile.name }); } catch (e) { /* non bloquant */ }
   } catch (e) {
-    showToast('Échec de synchronisation — données gardées en local');
+    console.error('Carnet — échec pushToSupabase:', e);
+    showToast('Échec de synchronisation : ' + (e && e.message ? e.message : 'erreur inconnue'));
   } finally {
     syncing = false;
     // Une sauvegarde a eu lieu pendant cet envoi : on relance immédiatement
@@ -2077,7 +2078,8 @@ async function reconcileSync(manual) {
     showToast(manual ? 'Données synchronisées ✓' : 'Reconnecté — données synchronisées');
     render();
   } catch (e) {
-    if (manual) showToast('Synchronisation impossible — vérifiez votre connexion');
+    console.error('Carnet — échec reconcileSync:', e);
+    if (manual) showToast('Échec : ' + (e && e.message ? e.message : 'connexion impossible'));
   } finally {
     reconciling = false;
     if (btn) { btn.classList.remove('spinning'); btn.disabled = false; }
