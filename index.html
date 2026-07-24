@@ -543,9 +543,13 @@ function handleRemoteChange() {
     } catch (e) { /* on retentera au prochain changement */ }
   }, 900);
 }
-function subscribeRealtime() {
+let realtimeChannel = null;
+function subscribeRealtime() 
+{
   if (!sb || !sbUser) return;
-  sb.channel('carnet-sync')
+  if (realtimeChannel) return;
+  realtimeChannel= sb
+  .channel('carnet-sync')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'programmes' }, handleRemoteChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'membres' }, handleRemoteChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, handleRemoteChange)
