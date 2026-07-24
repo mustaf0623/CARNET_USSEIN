@@ -1,16 +1,16 @@
 // sw.js — Carnet
 // Stratégie : Stale-While-Revalidate pour les ressources de l'app,
 // + cache des assets externes utilisés (CDN, polices) et fallback navigation hors-ligne.
-const CACHE_NAME = 'carnet-v7';
+const CACHE_NAME = 'carnet-v8';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192-v3.png',
-  './icons/icon-512-v3.png',
-  './icons/icon-512-maskable-v3.png',
-  './icons/apple-touch-icon-v3.png',
-  './icons/favicon-v3.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-512-maskable.png',
+  './apple-touch-icon.png',
+  './favicon.png',
 ];
 
 // Assets externes référencés dans index.html — on les met en cache pour permettre

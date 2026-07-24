@@ -13,12 +13,10 @@
 <meta name="apple-mobile-web-app-title" content="Carnet">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="./manifest.json">
-<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-v3.png">
-<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192-v3.png">
-<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-v3.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="apple-touch-icon-precomposed" sizes="180x180" href="./icons/apple-touch-icon-v3.png">
-<link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon-precomposed.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+<link rel="apple-touch-icon-precomposed" sizes="180x180" href="./apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -830,12 +828,12 @@ function renderRenameModal() {
   </div>`;
 }
 function attachRenameModal() {
-  const save = () => {
+  const save = async () => {
     const v = document.getElementById('renameInput').value.trim();
     if (!v) { showToast('Merci de renseigner un nom'); return; }
     state.data.profile.name = v;
     state.renameModalOpen = false;
-    saveData();
+    await saveData();
     render();
   };
   document.getElementById('renameSaveBtn').addEventListener('click', save);
@@ -875,11 +873,11 @@ function renderOnboarding() {
   </div>`;
 }
 function attachOnboarding() {
-  const go = () => {
+  const go = async () => {
     const v = document.getElementById('onboardName').value.trim();
     if (!v) { showToast('Merci de renseigner un nom'); return; }
     state.data.profile.name = v;
-    saveData();
+    await saveData();
     render();
   };
   document.getElementById('onboardBtn').addEventListener('click', go);
@@ -1213,10 +1211,10 @@ function attachPointageEvents() {
     openConfirm(
       'Supprimer cette séance ?',
       'Le pointage enregistré pour « ' + (sess ? sess.label : 'cette séance') + ' » sera définitivement supprimé.',
-      () => {
+      async () => {
         d.pointages = d.pointages.filter(p => p.sessionId !== state.pointageSessionId);
         d.sessions = d.sessions.filter(s => s.id !== state.pointageSessionId);
-        saveData();
+        await saveData();
         state.pointageSessionId = 'new';
         showToast('Séance supprimée');
         render();
@@ -1244,7 +1242,7 @@ function attachPointageEvents() {
   });
 
   const saveBtn = document.getElementById('saveSession');
-  if (saveBtn) saveBtn.addEventListener('click', () => {
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
     let sessionId = state.pointageSessionId;
     if (sessionId === 'new') {
       const label = (document.getElementById('sessionLabel')?.value || '').trim() || ('Séance du ' + fmtDate(state.pointageDate));
@@ -1269,7 +1267,7 @@ function attachPointageEvents() {
       if (membre && membre.ap) apTouched.push(membre);
     });
     const promoted = apTouched.filter(m => checkApPromotion(d, m.id));
-    saveData();
+    await saveData();
     state.pointageSessionId = sessionId;
     state.pointageLabel = '';
     showToast(marked
@@ -1401,12 +1399,12 @@ function guessMapping(headers) {
 function attachMembresEvents() {
   const d = state.data;
   const addProg = document.getElementById('addProgBtn');
-  if (addProg) addProg.addEventListener('click', () => {
+  if (addProg) addProg.addEventListener('click', async () => {
     const input = document.getElementById('newProgName');
     const name = input.value.trim();
     if (!name) { showToast('Merci de saisir un nom de programme'); return; }
     d.programmes.push({ id: uid(), nom: name });
-    saveData(); showToast('Programme ajouté'); render();
+    await saveData(); showToast('Programme ajouté'); render();
   });
 
   let selectedProgs = new Set();
@@ -1428,7 +1426,7 @@ function attachMembresEvents() {
     });
   });
   const addMembre = document.getElementById('addMembreBtn');
-  if (addMembre) addMembre.addEventListener('click', () => {
+  if (addMembre) addMembre.addEventListener('click', async () => {
     const prenom = document.getElementById('newPrenom').value.trim();
     const nom = document.getElementById('newNom').value.trim();
     const sexe = document.getElementById('newSexe').value;
@@ -1439,7 +1437,7 @@ function attachMembresEvents() {
       ? { id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), allProgrammes: false, ap: true }
       : { id: uid(), nom, prenom, sexe, programmeIds: [], allProgrammes: true, ap: false };
     d.membres.push(membre);
-    saveData(); showToast(ap ? 'Membre ponctuel ajouté (AP)' : 'Membre ajouté — pointable dans tous les programmes'); render();
+    await saveData(); showToast(ap ? 'Membre ponctuel ajouté (AP)' : 'Membre ajouté — pointable dans tous les programmes'); render();
   });
 
   const dz = document.getElementById('dropZone');
@@ -1462,13 +1460,13 @@ function attachMembresEvents() {
     openConfirm(
       'Supprimer ce programme ?',
       '« ' + (prog ? prog.nom : '') + ' » ainsi que toutes ses séances et pointages seront supprimés. Les membres eux-mêmes seront conservés.',
-      () => {
+      async () => {
         const sessionIds = d.sessions.filter(s => s.programmeId === btn.dataset.id).map(s => s.id);
         d.sessions = d.sessions.filter(s => s.programmeId !== btn.dataset.id);
         d.pointages = d.pointages.filter(p => !sessionIds.includes(p.sessionId));
         d.membres.forEach(m => { m.programmeIds = m.programmeIds.filter(pid => pid !== btn.dataset.id); });
         d.programmes = d.programmes.filter(p => p.id !== btn.dataset.id);
-        saveData(); showToast('Programme supprimé'); render();
+        await saveData(); showToast('Programme supprimé'); render();
       }
     );
   }));
@@ -1483,10 +1481,10 @@ function attachMembresEvents() {
     openConfirm(
       'Supprimer ce membre ?',
       (m ? m.prenom + ' ' + m.nom : 'Ce membre') + ' sera retiré, avec tout son historique de pointage.',
-      () => {
+      async () => {
         d.pointages = d.pointages.filter(p => p.membreId !== btn.dataset.id);
         d.membres = d.membres.filter(m => m.id !== btn.dataset.id);
-        saveData(); showToast('Membre supprimé'); render();
+        await saveData(); showToast('Membre supprimé'); render();
       }
     );
   }));
@@ -1496,13 +1494,13 @@ function attachMembresEvents() {
     openConfirm(
       'Réinitialiser toutes les données ?',
       'Programmes, membres, séances et pointages seront définitivement supprimés. Cette action est irréversible.',
-      () => {
+      async () => {
         const name = state.data.profile.name;
         state.data = emptyData();
         state.data.profile.name = name;
         state.dashProgFilter = 'global'; state.dashYearFilter = 'toutes';
         state.pointageProgId = null; state.pointageSessionId = 'new';
-        saveData(); showToast('Données réinitialisées'); render();
+        await saveData(); showToast('Données réinitialisées'); render();
       },
       'Réinitialiser'
     );
@@ -1529,7 +1527,7 @@ function handleFile(e) {
   reader.readAsArrayBuffer(file);
 }
 
-function confirmImport() {
+async function confirmImport() {
   const d = state.data;
   const map = state.importMapping;
   let created = 0;
@@ -1544,7 +1542,7 @@ function confirmImport() {
     created++;
   });
 
-  saveData();
+  await saveData();
   state.importStep = 0; state.importRows = []; state.importHeaders = []; state.importMapping = {};
   showToast(created + ' membre(s) importé(s) — pointables dans tous les programmes');
   render();
@@ -2079,7 +2077,12 @@ async function reconcileSync() {
     // session ou de réseau. La synchronisation se fait en tâche de fond.
     state.data = localData;
     render();
-    if (sb && sbUser) { updateSnapshotsFromCurrent(); subscribeRealtime(); reconcileSync(); }
+    // Important : on NE marque PAS ces données comme déjà synchronisées ici.
+    // Tant qu'on n'a pas confirmé avec le serveur ce qui y est déjà, on doit
+    // considérer que tout le contenu local (y compris des saisies faites
+    // hors ligne) peut avoir besoin d'être envoyé. reconcileSync() s'en
+    // charge : il pousse d'abord ces données, puis récupère l'état serveur.
+    if (sb && sbUser) { reconcileSync(); }
     return;
   }
 
