@@ -480,8 +480,10 @@ async function syncTable(tableName, rows, toRemote, prevMap) {
 }
 
 let syncing = false;
+let syncQueued = false;
 async function pushToSupabase() {
-  if (!sb || !sbUser || syncing) return;
+  if (!sb || !sbUser) return;
+  if (syncing) { syncQueued = true; return; }
   syncing = true;
   try {
     snapshotMaps.programmes = await syncTable('programmes', state.data.programmes, p => ({ id: p.id, nom: p.nom }), snapshotMaps.programmes);
@@ -493,6 +495,9 @@ async function pushToSupabase() {
     showToast('Échec de synchronisation — données gardées en local');
   } finally {
     syncing = false;
+    // Une sauvegarde a eu lieu pendant cet envoi : on relance immédiatement
+    // pour ne jamais laisser un changement local sans tentative d'envoi.
+    if (syncQueued) { syncQueued = false; pushToSupabase(); }
   }
 }
 
@@ -501,6 +506,10 @@ function handleRemoteChange() {
   clearTimeout(remoteChangeTimer);
   remoteChangeTimer = setTimeout(async () => {
     try {
+      // On envoie d'abord tout changement local en attente : sans ça, un
+      // rafraîchissement déclenché par le changement d'un autre appareil
+      // pourrait écraser une saisie locale pas encore synchronisée.
+      await pushToSupabase();
       const remote = await pullFromSupabase();
       state.data.programmes = remote.programmes;
       state.data.membres = remote.membres;
