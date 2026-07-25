@@ -167,6 +167,22 @@
   .user-name{ font-size:13.5px; font-weight:700; color:var(--cover-ink); }
   .user-role{ font-size:10.5px; color:var(--cover-ink-faint); }
   .edit-name-btn{ margin-left:auto; background:none; border:none; color:var(--cover-ink-faint); font-size:11px; text-decoration:underline; padding:2px; }
+  .sidebar-footer .signOutBtn{
+    margin-top:8px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:fit-content;
+    padding:8px 12px;
+    border:1px solid rgba(237,241,229,0.16);
+    border-radius:999px;
+    background:rgba(255,255,255,0.08);
+    color:var(--cover-ink);
+    font-size:11.5px;
+    text-decoration:none;
+    transition:background 0.18s ease, transform 0.15s ease;
+  }
+  .sidebar-footer .signOutBtn:hover{ background:rgba(255,255,255,0.14); transform:translateY(-1px); }
 
   main{ flex:1; min-width:0; padding:34px 42px 60px; max-width:1180px; background:var(--paper); }
   .view{ animation:viewIn 0.42s cubic-bezier(.2,.7,.3,1) both; }
@@ -583,6 +599,7 @@ let state = {
   memberDetailId: null,
   reportScope: 'global',
   reportSessionId: 'toutes',
+  reportYear: 'toutes',
 };
 let pendingConfirmAction = null;
 
@@ -596,11 +613,28 @@ async function idbDelete(key) {
   });
 }
 
+const LOCAL_BACKUP_KEY = 'carnet-data-backup';
+
 async function loadData() {
-  try { const v = await idbGet('carnet-data'); if (v) return v; } catch (e) { /* premier lancement */ }
+  try { const v = await idbGet('carnet-data'); if (v) return v; } catch (e) { /* premier lancement ou IndexedDB indisponible */ }
+  // Repli : IndexedDB est vide ou en échec, mais une copie de secours synchrone
+  // (localStorage) a pu survivre à un arrêt brutal de l'app hors ligne.
+  try {
+    const backup = localStorage.getItem(LOCAL_BACKUP_KEY);
+    if (backup) {
+      const parsed = JSON.parse(backup);
+      try { await idbSet('carnet-data', parsed); } catch (e) { /* on renvoie quand même la copie récupérée */ }
+      return parsed;
+    }
+  } catch (e) { /* noop */ }
   return null;
 }
 async function saveData() {
+  // Écriture SYNCHRONE en premier : contrairement à IndexedDB (asynchrone),
+  // localStorage.setItem se termine avant que la ligne suivante ne s'exécute,
+  // donc même un arrêt brutal de l'app juste après l'action a beaucoup moins
+  // de chances de l'interrompre en plein milieu.
+  try { localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(state.data)); } catch (e) { /* stockage indisponible, on continue avec IndexedDB seul */ }
   try { await idbSet('carnet-data', state.data); }
   catch (e) { showToast('Échec de la sauvegarde locale'); }
   if (sb && sbUser) pushToSupabase();
@@ -627,6 +661,7 @@ async function resetAppData() {
   state.memberDetailId = null;
   state.reportScope = 'global';
   state.reportSessionId = 'toutes';
+  state.reportYear = 'toutes';
   pendingConfirmAction = null;
   snapshotMaps.programmes = new Map();
   snapshotMaps.membres = new Map();
@@ -635,6 +670,7 @@ async function resetAppData() {
 
   try { await idbDelete('carnet-data'); } catch (e) { /* noop */ }
   try { await idbSet('carnet-data', state.data); } catch (e) { /* noop */ }
+  try { localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(state.data)); } catch (e) { /* noop */ }
 
   render();
   showToast('Données locales réinitialisées');
@@ -780,7 +816,7 @@ function render() {
           </div>
           <button class="edit-name-btn" id="editNameBtn">modifier</button>
         </div>
-        ${sb && sbUser ? `<button class="edit-name-btn signOutBtn" id="signOutBtn" style="margin-top:8px;">se déconnecter</button>` : ''}
+        <button class="edit-name-btn signOutBtn" id="signOutBtn" style="margin-top:8px;">${sb && sbUser ? 'se déconnecter' : 'se connecter'}</button>
       </div>
     </aside>
     <main><div class="view" id="view">${renderTab()}</div></main>
@@ -924,7 +960,10 @@ function attachShellEvents() {
   const editBtn = document.getElementById('editNameBtn');
   if (editBtn) editBtn.addEventListener('click', renameSignataire);
   const signOutBtn = document.getElementById('signOutBtn');
-  if (signOutBtn) signOutBtn.addEventListener('click', signOutSupabase);
+  if (signOutBtn) signOutBtn.addEventListener('click', () => {
+    if (sb && sbUser) signOutSupabase();
+    else if (sb) renderAuthScreen();
+  });
 }
 
 /* ================= ONBOARDING ================= */
@@ -1614,7 +1653,7 @@ function renderRapports() {
   const d = state.data;
   const scope = state.reportScope || 'global';
   const sessionId = state.reportSessionId || 'toutes';
-  const scopeOptions = [`<option value="global">Tous les programmes</option>`].concat(
+  const scopeOptions = [`<option value="global" ${scope === 'global' ? 'selected' : ''}>Tous les programmes</option>`].concat(
     d.programmes.map(p => `<option value="${p.id}" ${scope === p.id ? 'selected' : ''}>${escapeHtml(p.nom)}</option>`)
   ).join('');
   const years = getAvailableYears(d);
@@ -1687,12 +1726,17 @@ function attachRapportsEvents() {
     render();
   });
   const yearSel = document.getElementById('reportYear');
-  if (yearSel) yearSel.addEventListener('change', e => { state.reportYear = e.target.value; });
+  if (yearSel) {
+    // La période est conservée lorsqu'un changement de portée ou de séance réaffiche le formulaire.
+    if (Array.from(yearSel.options).some(option => option.value === state.reportYear)) yearSel.value = state.reportYear;
+    else state.reportYear = 'toutes';
+    yearSel.addEventListener('change', e => { state.reportYear = e.target.value; });
+  }
   const genBtn = document.getElementById('genPdfBtn');
   if (genBtn) genBtn.addEventListener('click', () => {
     const scope = state.reportScope || 'global';
     const sessionId = state.reportSessionId || 'toutes';
-    const yearVal = document.getElementById('reportYear') ? document.getElementById('reportYear').value : 'toutes';
+    const yearVal = state.reportYear || 'toutes';
     if (sessionId !== 'toutes' && scope !== 'global') downloadPdf(scope, 'toutes', sessionId);
     else downloadPdf(scope, yearVal);
   });
@@ -2051,6 +2095,7 @@ async function signOutSupabase() {
       try { await sb.auth.signOut(); } catch (e) { /* on nettoie quand même localement */ }
       sbUser = null;
       try { await idbDelete('carnet-data'); } catch (e) { /* noop */ }
+      try { localStorage.removeItem(LOCAL_BACKUP_KEY); } catch (e) { /* noop */ }
       location.reload();
     },
     'Se déconnecter'
