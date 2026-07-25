@@ -479,6 +479,26 @@ function supabaseConfigured() { return !SUPABASE_URL.startsWith('VOTRE_') && !SU
 let sb = null;
 let sbUser = null;
 const snapshotMaps = { programmes: new Map(), membres: new Map(), sessions: new Map(), pointages: new Map() };
+const SYNC_STATE_KEY = 'carnet-sync-state';
+const SYNC_STATE_BACKUP_KEY = 'carnet-sync-state-backup';
+let syncState = { pending: false, snapshots: null };
+
+function serialiseSnapshots() {
+  return Object.fromEntries(Object.entries(snapshotMaps).map(([table, map]) => [table, Array.from(map.entries())]));
+}
+function restoreSnapshots(snapshots) {
+  if (!snapshots) return;
+  Object.keys(snapshotMaps).forEach(table => { snapshotMaps[table] = new Map(snapshots[table] || []); });
+}
+async function loadSyncState() {
+  try { const saved = await idbGet(SYNC_STATE_KEY); if (saved) return saved; } catch (e) { /* copie de secours ci-dessous */ }
+  try { const backup = localStorage.getItem(SYNC_STATE_BACKUP_KEY); return backup ? JSON.parse(backup) : null; } catch (e) { return null; }
+}
+async function saveSyncState(pending) {
+  syncState = { pending: !!pending, snapshots: serialiseSnapshots() };
+  try { localStorage.setItem(SYNC_STATE_BACKUP_KEY, JSON.stringify(syncState)); } catch (e) { /* stockage indisponible */ }
+  try { await idbSet(SYNC_STATE_KEY, syncState); } catch (e) { /* la copie locale reste disponible */ }
+}
 
 function updateSnapshotsFromCurrent() {
   snapshotMaps.programmes = new Map(state.data.programmes.map(r => [r.id, JSON.stringify(r)]));
@@ -518,8 +538,8 @@ async function syncTable(tableName, rows, toRemote, prevMap) {
 let syncing = false;
 let syncQueued = false;
 async function pushToSupabase() {
-  if (!sb || !sbUser) return;
-  if (syncing) { syncQueued = true; return; }
+  if (!sb || !sbUser) return false;
+  if (syncing) { syncQueued = true; return false; }
   syncing = true;
   try {
     snapshotMaps.programmes = await syncTable('programmes', state.data.programmes, p => ({ id: p.id, nom: p.nom }), snapshotMaps.programmes);
@@ -527,9 +547,12 @@ async function pushToSupabase() {
     snapshotMaps.sessions = await syncTable('sessions', state.data.sessions, s => ({ id: s.id, programme_id: s.programmeId, date: s.date, label: s.label }), snapshotMaps.sessions);
     snapshotMaps.pointages = await syncTable('pointages', state.data.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut }), snapshotMaps.pointages);
     try { await sb.from('profiles').upsert({ id: sbUser.id, name: state.data.profile.name }); } catch (e) { /* non bloquant */ }
+    await saveSyncState(false);
+    return true;
   } catch (e) {
     console.error('Carnet — échec pushToSupabase:', e);
     showToast('Échec de synchronisation : ' + (e && e.message ? e.message : 'erreur inconnue'));
+    return false;
   } finally {
     syncing = false;
     // Une sauvegarde a eu lieu pendant cet envoi : on relance immédiatement
@@ -630,6 +653,9 @@ async function loadData() {
   return null;
 }
 async function saveData() {
+  // On marque la synchronisation avant l'écriture : une fermeture brutale
+  // peut ainsi être reprise au prochain démarrage sans perdre une modification.
+  await saveSyncState(true);
   // Écriture SYNCHRONE en premier : contrairement à IndexedDB (asynchrone),
   // localStorage.setItem se termine avant que la ligne suivante ne s'exécute,
   // donc même un arrêt brutal de l'app juste après l'action a beaucoup moins
@@ -669,8 +695,10 @@ async function resetAppData() {
   snapshotMaps.pointages = new Map();
 
   try { await idbDelete('carnet-data'); } catch (e) { /* noop */ }
+  try { await idbDelete(SYNC_STATE_KEY); } catch (e) { /* noop */ }
   try { await idbSet('carnet-data', state.data); } catch (e) { /* noop */ }
   try { localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(state.data)); } catch (e) { /* noop */ }
+  try { localStorage.removeItem(SYNC_STATE_BACKUP_KEY); } catch (e) { /* noop */ }
 
   render();
   showToast('Données locales réinitialisées');
@@ -2095,7 +2123,9 @@ async function signOutSupabase() {
       try { await sb.auth.signOut(); } catch (e) { /* on nettoie quand même localement */ }
       sbUser = null;
       try { await idbDelete('carnet-data'); } catch (e) { /* noop */ }
+      try { await idbDelete(SYNC_STATE_KEY); } catch (e) { /* noop */ }
       try { localStorage.removeItem(LOCAL_BACKUP_KEY); } catch (e) { /* noop */ }
+      try { localStorage.removeItem(SYNC_STATE_BACKUP_KEY); } catch (e) { /* noop */ }
       location.reload();
     },
     'Se déconnecter'
@@ -2104,21 +2134,26 @@ async function signOutSupabase() {
 
 /* ================= INIT ================= */
 async function startApp() {
-  let data;
+  const localData = await loadData();
+  syncState = await loadSyncState() || syncState;
+  let data = localData || emptyData();
   if (sb && sbUser) {
     try {
+      if (localData && syncState.pending) {
+        state.data = localData;
+        restoreSnapshots(syncState.snapshots);
+        if (!await pushToSupabase()) throw new Error('synchronisation locale impossible');
+      }
       data = await pullFromSupabase();
-      if (!data.profile.name) { const local = await loadData(); if (local && local.profile.name) data.profile.name = local.profile.name; }
+      if (!data.profile.name && localData && localData.profile.name) data.profile.name = localData.profile.name;
       await idbSet('carnet-data', data);
     } catch (e) {
-      data = await loadData() || emptyData();
+      data = localData || emptyData();
       showToast('Connexion au serveur impossible — mode hors-ligne local');
     }
-  } else {
-    data = await loadData() || emptyData();
   }
   state.data = data;
-  if (sb && sbUser) { updateSnapshotsFromCurrent(); subscribeRealtime(); }
+  if (sb && sbUser) { updateSnapshotsFromCurrent(); await saveSyncState(false); subscribeRealtime(); }
   render();
 }
 
