@@ -424,6 +424,7 @@ const ICONS = {
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`,
   download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>`,
   drive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3l8 0 5 9-4 7-9 0-5-8z"/><path d="M8 3l-5 9M16 3l5 9M4.5 13.5h15"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1-2.2 2.2-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6v.2h-3.2v-.2a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1-2.2-2.2.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.6-1H4.6v-3.2h.2a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9L6 7.8l2.2-2.2.1.1a1.7 1.7 0 001.9.3 1.7 1.7 0 001-1.6v-.2h3.2v.2a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1 2.2 2.2-.1.1a1.7 1.7 0 00-.3 1.9 1.7 1.7 0 001.6 1h.2V14h-.2a1.7 1.7 0 00-1.6 1z"/></svg>`,
 };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -478,6 +479,9 @@ function supabaseConfigured() { return !SUPABASE_URL.startsWith('VOTRE_') && !SU
 
 let sb = null;
 let sbUser = null;
+let sbProfile = null;
+let sbSections = [];
+let sbUsers = [];
 const snapshotMaps = { programmes: new Map(), membres: new Map(), sessions: new Map(), pointages: new Map() };
 const SYNC_STATE_KEY = 'carnet-sync-state';
 const SYNC_STATE_BACKUP_KEY = 'carnet-sync-state-backup';
@@ -508,11 +512,14 @@ function updateSnapshotsFromCurrent() {
 }
 
 async function pullFromSupabase() {
+  const sectionId = state.activeSectionId;
+  if (!sectionId) return emptyData();
+  const scoped = table => sb.from(table).select('*').eq('section_id', sectionId);
   const [progRes, memRes, sessRes, ptRes, profRes] = await Promise.all([
-    sb.from('programmes').select('*'),
-    sb.from('membres').select('*'),
-    sb.from('sessions').select('*'),
-    sb.from('pointages').select('*'),
+    scoped('programmes'),
+    scoped('membres'),
+    scoped('sessions'),
+    scoped('pointages'),
     sb.from('profiles').select('*').eq('id', sbUser.id).maybeSingle(),
   ]);
   if (progRes.error) throw progRes.error;
@@ -522,6 +529,23 @@ async function pullFromSupabase() {
   const pointages = (ptRes.data || []).map(r => ({ id: r.id, sessionId: r.session_id, membreId: r.membre_id, statut: r.statut }));
   const name = (profRes.data && profRes.data.name) || '';
   return { profile: { name }, programmes, membres, sessions, pointages };
+}
+
+async function loadAccessContext() {
+  const { data: profile, error: profileError } = await sb.from('profiles')
+    .select('id, name, email, role, section_id, active').eq('id', sbUser.id).maybeSingle();
+  if (profileError || !profile) throw profileError || new Error('profil introuvable');
+  sbProfile = { id: profile.id, name: profile.name || '', email: profile.email || '', role: profile.role || 'utilisateur', sectionId: profile.section_id, active: profile.active !== false };
+  const { data: sections, error: sectionError } = await sb.from('sections').select('id, nom').order('nom');
+  if (sectionError) throw sectionError;
+  sbSections = sections || [];
+  if (sbProfile.role === 'super_admin') {
+    const { data: users, error: usersError } = await sb.from('profiles').select('id, name, email, role, section_id, active').order('created_at');
+    if (usersError) throw usersError;
+    sbUsers = users || [];
+  }
+  if (sbProfile.role === 'super_admin') state.activeSectionId = state.activeSectionId || sbSections[0]?.id || null;
+  else state.activeSectionId = sbProfile.sectionId;
 }
 
 async function syncTable(tableName, rows, toRemote, prevMap) {
@@ -542,10 +566,12 @@ async function pushToSupabase() {
   if (syncing) { syncQueued = true; return false; }
   syncing = true;
   try {
-    snapshotMaps.programmes = await syncTable('programmes', state.data.programmes, p => ({ id: p.id, nom: p.nom }), snapshotMaps.programmes);
-    snapshotMaps.membres = await syncTable('membres', state.data.membres, m => ({ id: m.id, nom: m.nom, prenom: m.prenom, sexe: m.sexe, programme_ids: m.programmeIds || [], all_programmes: !!m.allProgrammes, ap: !!m.ap }), snapshotMaps.membres);
-    snapshotMaps.sessions = await syncTable('sessions', state.data.sessions, s => ({ id: s.id, programme_id: s.programmeId, date: s.date, label: s.label }), snapshotMaps.sessions);
-    snapshotMaps.pointages = await syncTable('pointages', state.data.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut }), snapshotMaps.pointages);
+    const section_id = state.activeSectionId;
+    if (!section_id) throw new Error('Aucune Section attribuée');
+    snapshotMaps.programmes = await syncTable('programmes', state.data.programmes, p => ({ id: p.id, nom: p.nom, section_id }), snapshotMaps.programmes);
+    snapshotMaps.membres = await syncTable('membres', state.data.membres, m => ({ id: m.id, nom: m.nom, prenom: m.prenom, sexe: m.sexe, programme_ids: m.programmeIds || [], all_programmes: !!m.allProgrammes, ap: !!m.ap, section_id }), snapshotMaps.membres);
+    snapshotMaps.sessions = await syncTable('sessions', state.data.sessions, s => ({ id: s.id, programme_id: s.programmeId, date: s.date, label: s.label, section_id }), snapshotMaps.sessions);
+    snapshotMaps.pointages = await syncTable('pointages', state.data.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut, section_id }), snapshotMaps.pointages);
     try { await sb.from('profiles').upsert({ id: sbUser.id, name: state.data.profile.name }); } catch (e) { /* non bloquant */ }
     await saveSyncState(false);
     return true;
@@ -623,6 +649,7 @@ let state = {
   reportScope: 'global',
   reportSessionId: 'toutes',
   reportYear: 'toutes',
+  activeSectionId: null,
 };
 let pendingConfirmAction = null;
 
@@ -653,6 +680,8 @@ async function loadData() {
   return null;
 }
 async function saveData() {
+  // Copie synchrone avant toute attente : elle reste disponible même si l'app se ferme maintenant.
+  try { localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(state.data)); } catch (e) { /* stockage indisponible */ }
   // On marque la synchronisation avant l'écriture : une fermeture brutale
   // peut ainsi être reprise au prochain démarrage sans perdre une modification.
   await saveSyncState(true);
@@ -817,6 +846,7 @@ function scopedStats(data, progFilter, yearFilter) {
 function render() {
   const app = document.getElementById('app');
   if (!state.data) { app.innerHTML = ''; return; }
+  if (sb && sbUser && sbProfile && (!sbProfile.active || !state.activeSectionId)) { app.innerHTML = renderAccessPending(); attachAccessPending(); return; }
   if (!state.data.profile.name) { app.innerHTML = renderOnboarding(); attachOnboarding(); return; }
 
   app.innerHTML = `
@@ -833,9 +863,11 @@ function render() {
         ${tabBtn('pointage', ICONS.pointage, 'Pointage')}
         ${tabBtn('membres', ICONS.membres, 'Membres')}
         ${tabBtn('rapports', ICONS.rapports, 'Rapports')}
+        ${sbProfile?.role === 'super_admin' ? tabBtn('administration', ICONS.settings, 'Administration') : ''}
       </nav>
       <div class="sidebar-footer">
-        <div class="sidebar-org">Commission Administrative</div>
+        <div class="sidebar-org">${escapeHtml((sbSections.find(s => s.id === state.activeSectionId) || {}).nom || 'Commission Administrative')}</div>
+        ${sbProfile?.role === 'super_admin' ? `<select id="sectionSwitcher" style="width:100%;margin:0 0 8px;">${sbSections.map(s => `<option value="${s.id}" ${s.id === state.activeSectionId ? 'selected' : ''}>${escapeHtml(s.nom)}</option>`).join('')}</select>` : ''}
         <div class="user-chip">
           <div class="avatar">${(state.data.profile.name || '?').trim()[0]?.toUpperCase() || '?'}</div>
           <div>
@@ -992,6 +1024,36 @@ function attachShellEvents() {
     if (sb && sbUser) signOutSupabase();
     else if (sb) renderAuthScreen();
   });
+  const sectionSwitcher = document.getElementById('sectionSwitcher');
+  if (sectionSwitcher) sectionSwitcher.addEventListener('change', async e => {
+    state.activeSectionId = e.target.value;
+    state.data = await pullFromSupabase();
+    updateSnapshotsFromCurrent();
+    render();
+  });
+}
+
+function renderAccessPending() {
+  const isAdmin = sbProfile?.role === 'super_admin';
+  return `<div class="onboard-overlay"><div class="onboard-card"><div class="onboard-mark">${ICONS.mark}</div>
+    <h2>${isAdmin ? 'Créer la première Section' : 'Accès en attente'}</h2>
+    <p>${isAdmin ? 'Créez une Section pour commencer à organiser les données.' : (!sbProfile?.active ? 'Votre compte est désactivé. Contactez un super-administrateur.' : 'Votre compte attend son rattachement à une Section par un super-administrateur.')}</p>
+    ${isAdmin ? `<input id="firstSectionName" placeholder="Nom de la Section" autofocus /><button class="btn btn-primary" id="createFirstSectionBtn" style="width:100%;justify-content:center;margin-top:12px;">Créer la Section</button>` : ''}
+    <button class="btn btn-ghost" id="pendingSignOutBtn" style="width:100%;justify-content:center;margin-top:10px;">Se déconnecter</button>
+  </div></div>`;
+}
+function attachAccessPending() {
+  const create = document.getElementById('createFirstSectionBtn');
+  if (create) create.addEventListener('click', async () => {
+    const nom = document.getElementById('firstSectionName').value.trim();
+    if (!nom) { showToast('Indiquez le nom de la Section'); return; }
+    const { error } = await sb.from('sections').insert({ nom });
+    if (error) { showToast(error.message); return; }
+    await loadAccessContext();
+    state.data = await pullFromSupabase();
+    updateSnapshotsFromCurrent(); render();
+  });
+  document.getElementById('pendingSignOutBtn').addEventListener('click', signOutSupabase);
 }
 
 /* ================= ONBOARDING ================= */
@@ -1025,6 +1087,7 @@ function renderTab() {
   if (state.tab === 'pointage') return renderPointage();
   if (state.tab === 'membres') return renderMembres();
   if (state.tab === 'rapports') return renderRapports();
+  if (state.tab === 'administration' && sbProfile?.role === 'super_admin') return renderAdministration();
   return '';
 }
 function attachTabEvents() {
@@ -1032,6 +1095,33 @@ function attachTabEvents() {
   if (state.tab === 'pointage') attachPointageEvents();
   if (state.tab === 'membres') attachMembresEvents();
   if (state.tab === 'rapports') attachRapportsEvents();
+  if (state.tab === 'administration') attachAdministrationEvents();
+}
+
+function renderAdministration() {
+  const sectionOptions = `<option value="">Aucune Section</option>` + sbSections.map(s => `<option value="${s.id}">${escapeHtml(s.nom)}</option>`).join('');
+  return `<div class="page-head"><div><div class="eyebrow">Super-administration</div><h1 class="page-title">Sections et utilisateurs</h1><p class="page-sub">Créez les Sections et attribuez les accès.</p></div></div>
+    <div class="grid grid-2"><div class="card"><h3 class="card-title">Nouvelle Section</h3><div style="display:flex;gap:8px;"><input id="newSectionName" placeholder="Nom de la Section"><button class="btn btn-primary" id="newSectionBtn">Créer</button></div><div class="ledger" style="margin-top:14px;">${sbSections.map(s => `<div class="ledger-row"><div class="prog-name">${escapeHtml(s.nom)}</div></div>`).join('') || emptyRow('Aucune Section.')}</div></div>
+    <div class="card"><h3 class="card-title">Utilisateurs</h3><div class="ledger">${sbUsers.map(u => `<div class="ledger-row" style="align-items:flex-start;gap:8px;"><div style="flex:1;min-width:120px;"><div class="prog-name">${escapeHtml(u.name || 'Sans nom')}</div><div style="font-size:11px;color:var(--ink-faint);">${escapeHtml(u.email || u.id)}</div></div><select class="admin-user-section" data-id="${u.id}">${sectionOptions.replace(`value="${u.section_id}"`, `value="${u.section_id}" selected`)}</select><select class="admin-user-role" data-id="${u.id}"><option value="utilisateur" ${u.role !== 'super_admin' ? 'selected' : ''}>Utilisateur</option><option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super-admin</option></select><label style="font-size:11px;display:flex;align-items:center;gap:4px;"><input class="admin-user-active" data-id="${u.id}" type="checkbox" ${u.active !== false ? 'checked' : ''}>actif</label><button class="btn btn-ghost btn-sm save-user-btn" data-id="${u.id}">Enregistrer</button></div>`).join('') || emptyRow('Aucun utilisateur.')}</div></div></div>`;
+}
+function attachAdministrationEvents() {
+  const create = document.getElementById('newSectionBtn');
+  if (create) create.addEventListener('click', async () => {
+    const nom = document.getElementById('newSectionName').value.trim();
+    if (!nom) { showToast('Indiquez le nom de la Section'); return; }
+    const { error } = await sb.from('sections').insert({ nom });
+    if (error) { showToast(error.message); return; }
+    await loadAccessContext(); render();
+  });
+  document.querySelectorAll('.save-user-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    const section_id = document.querySelector(`.admin-user-section[data-id="${id}"]`).value || null;
+    const role = document.querySelector(`.admin-user-role[data-id="${id}"]`).value;
+    const active = document.querySelector(`.admin-user-active[data-id="${id}"]`).checked;
+    const { error } = await sb.from('profiles').update({ section_id, role, active }).eq('id', id);
+    if (error) { showToast(error.message); return; }
+    await loadAccessContext(); showToast('Utilisateur mis à jour'); render();
+  }));
 }
 
 /* ================= DASHBOARD ================= */
@@ -2135,10 +2225,17 @@ async function signOutSupabase() {
 /* ================= INIT ================= */
 async function startApp() {
   const localData = await loadData();
-  syncState = await loadSyncState() || syncState;
+  syncState = await loadSyncState() || (localData ? { pending: true, snapshots: null } : syncState);
   let data = localData || emptyData();
+  let remoteReady = false;
   if (sb && sbUser) {
     try {
+      await loadAccessContext();
+      if (!sbProfile.active || !state.activeSectionId) {
+        state.data = emptyData();
+        render();
+        return;
+      }
       if (localData && syncState.pending) {
         state.data = localData;
         restoreSnapshots(syncState.snapshots);
@@ -2147,13 +2244,14 @@ async function startApp() {
       data = await pullFromSupabase();
       if (!data.profile.name && localData && localData.profile.name) data.profile.name = localData.profile.name;
       await idbSet('carnet-data', data);
+      remoteReady = true;
     } catch (e) {
       data = localData || emptyData();
       showToast('Connexion au serveur impossible — mode hors-ligne local');
     }
   }
   state.data = data;
-  if (sb && sbUser) { updateSnapshotsFromCurrent(); await saveSyncState(false); subscribeRealtime(); }
+  if (sb && sbUser) { updateSnapshotsFromCurrent(); if (remoteReady) await saveSyncState(false); subscribeRealtime(); }
   render();
 }
 
