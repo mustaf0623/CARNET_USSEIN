@@ -665,6 +665,7 @@ let state = {
   confirmMessage: '',
   confirmLabel: 'Confirmer',
   memberDetailId: null,
+  completeInfoQueue: [],
   reportScope: 'global',
   reportSessionId: 'toutes',
   reportYear: 'toutes',
@@ -778,6 +779,14 @@ function monthLabel(ym) { const [y, m] = ym.split('-'); return MOIS_FR[parseInt(
 function getAvailableYears(data) {
   const set = new Set(data.sessions.map(s => sessionYear(s.date)));
   return Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
+}
+// Toutes les colonnes déjà connues depuis un import précédent (base
+// importée), utilisées pour proposer les mêmes champs lors d'un ajout
+// manuel de membre permanent.
+function extraFieldKeys(data) {
+  const keys = new Set();
+  data.membres.forEach(m => Object.keys(m.extra || {}).forEach(k => keys.add(k)));
+  return Array.from(keys);
 }
 function memberInProgramme(m, progId) {
   return !!m.allProgrammes || m.programmeIds.includes(progId);
@@ -933,11 +942,13 @@ function render() {
   if (state.renameModalOpen) app.innerHTML += renderRenameModal();
   if (state.confirmModalOpen) app.innerHTML += renderConfirmModal();
   if (state.memberDetailId) app.innerHTML += renderMemberDetailModal();
+  if (state.completeInfoQueue && state.completeInfoQueue.length) app.innerHTML += renderCompleteInfoModal();
   attachShellEvents();
   attachTabEvents();
   if (state.renameModalOpen) attachRenameModal();
   if (state.confirmModalOpen) attachConfirmModal();
   if (state.memberDetailId) attachMemberDetailModal();
+  if (state.completeInfoQueue && state.completeInfoQueue.length) attachCompleteInfoModal();
 }
 
 function tabBtn(id, icon, label) {
@@ -1031,6 +1042,49 @@ function attachMemberDetailModal() {
   document.getElementById('memberDetailOverlay').addEventListener('click', (e) => { if (e.target.id === 'memberDetailOverlay') { state.memberDetailId = null; render(); } });
   const yearSel = document.getElementById('memberDetailYear');
   if (yearSel) yearSel.addEventListener('change', e => { state.dashYearFilter = e.target.value; render(); });
+}
+
+// Après une promotion AP → permanent, on propose de compléter les infos du
+// membre pour qu'il soit en phase avec la base importée (mêmes champs que
+// les autres membres permanents). Traité un membre à la fois (file d'attente).
+function renderCompleteInfoModal() {
+  const d = state.data;
+  const id = state.completeInfoQueue[0];
+  const m = d.membres.find(x => x.id === id);
+  if (!m) { state.completeInfoQueue.shift(); return ''; }
+  const keys = extraFieldKeys(d).filter(k => k !== 'Contact');
+  return `
+  <div class="onboard-overlay" id="completeInfoOverlay">
+    <div class="onboard-card" style="width:min(440px, 92vw);text-align:left;">
+      <h2 style="margin:0 0 4px;">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</h2>
+      <p style="margin:0 0 16px;font-size:13px;color:var(--ink-faint);">Intégré(e) définitivement à la base des membres permanents. Complétez ses informations pour qu’elles soient en phase avec le reste de la base.</p>
+      ${keys.length ? keys.map(k => `<div style="margin-bottom:10px;"><label style="font-size:11.5px;color:var(--ink-faint);">${escapeHtml(k)}</label><input type="text" class="completeInfoInput" data-key="${escapeHtml(k)}" value="${escapeHtml(m.extra && m.extra[k] || '')}" style="width:100%;"></div>`).join('')
+        : `<div style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Aucun champ complémentaire détecté dans la base pour l’instant.</div>`}
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn btn-primary" id="completeInfoSaveBtn" style="flex:1;justify-content:center;">Enregistrer</button>
+        <button class="btn btn-ghost" id="completeInfoSkipBtn" style="flex:1;justify-content:center;">Plus tard</button>
+      </div>
+    </div>
+  </div>`;
+}
+function attachCompleteInfoModal() {
+  const id = state.completeInfoQueue[0];
+  const advance = () => { state.completeInfoQueue.shift(); render(); };
+  const save = document.getElementById('completeInfoSaveBtn');
+  if (save) save.addEventListener('click', async () => {
+    const m = state.data.membres.find(x => x.id === id);
+    if (m) {
+      m.extra = m.extra || {};
+      document.querySelectorAll('.completeInfoInput').forEach(inp => {
+        const v = inp.value.trim();
+        if (v) m.extra[inp.dataset.key] = v;
+      });
+      await saveData();
+    }
+    advance();
+  });
+  const skip = document.getElementById('completeInfoSkipBtn');
+  if (skip) skip.addEventListener('click', advance);
 }
 
 function renderRenameModal() {
@@ -1585,6 +1639,7 @@ function attachPointageEvents() {
       if (membre && membre.ap) apTouched.push(membre);
     });
     const promoted = apTouched.filter(m => checkApPromotion(d, m.id));
+    if (promoted.length) state.completeInfoQueue = (state.completeInfoQueue || []).concat(promoted.map(m => m.id));
     await saveData();
     state.pointageSessionId = sessionId;
     state.pointageLabel = '';
@@ -1632,6 +1687,18 @@ function renderMembres() {
             <button type="button" class="status-btn absent" data-ap="1" style="flex:1;">Ponctuel (AP)</button>
           </div>
           <div style="font-size:11.5px;color:var(--ink-faint);margin-top:6px;line-height:1.5;" id="newMembreTypeHint">Automatiquement pointable dans tous les programmes déjà créés et ceux à venir.</div>
+        </div>
+        <div class="field" style="margin-bottom:14px;" id="newMembreExtraPermanent">
+          <label>Informations complémentaires (base importée)</label>
+          ${(() => {
+            const keys = extraFieldKeys(d);
+            if (!keys.length) return `<div style="font-size:11.5px;color:var(--ink-faint);">Aucun champ détecté pour l’instant — importez d’abord un fichier pour que ces champs apparaissent ici.</div>`;
+            return keys.map(k => `<div style="margin-bottom:8px;"><label style="font-size:11.5px;color:var(--ink-faint);">${escapeHtml(k)}</label><input type="text" class="newMembreExtraInput" data-key="${escapeHtml(k)}" style="width:100%;"></div>`).join('');
+          })()}
+        </div>
+        <div class="field" style="margin-bottom:14px;display:none;" id="newMembreContactAP">
+          <label>Contact</label>
+          <input type="text" id="newMembreContact" placeholder="Téléphone ou email" style="width:100%;">
         </div>
         <div class="field" style="margin-bottom:14px;" id="newMembreProgsField">
           <label>Programmes</label>
@@ -1763,6 +1830,10 @@ function attachMembresEvents() {
         ? 'Compté à part des effectifs permanents, uniquement sur les programmes choisis ci-dessous. Intégré définitivement à la base — et pointable partout — dès qu’il est pointé à plus de 6 séances réparties sur au moins 3 programmes.'
         : 'Automatiquement pointable dans tous les programmes déjà créés et ceux à venir.';
       if (progsField) progsField.style.display = isAp ? '' : 'none';
+      const extraPermanent = document.getElementById('newMembreExtraPermanent');
+      const contactAP = document.getElementById('newMembreContactAP');
+      if (extraPermanent) extraPermanent.style.display = isAp ? 'none' : '';
+      if (contactAP) contactAP.style.display = isAp ? '' : 'none';
     });
   });
   const addMembre = document.getElementById('addMembreBtn');
@@ -1773,9 +1844,19 @@ function attachMembresEvents() {
     if (!nom || !prenom) { showToast('Nom et prénom requis'); return; }
     const apBtn = document.querySelector('#newMembreType .status-btn.active');
     const ap = !!(apBtn && apBtn.dataset.ap === '1');
+    const extra = {};
+    if (ap) {
+      const contact = document.getElementById('newMembreContact')?.value.trim();
+      if (contact) extra['Contact'] = contact;
+    } else {
+      document.querySelectorAll('.newMembreExtraInput').forEach(inp => {
+        const v = inp.value.trim();
+        if (v) extra[inp.dataset.key] = v;
+      });
+    }
     const membre = ap
-      ? { id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), allProgrammes: false, ap: true, extra: {} }
-      : { id: uid(), nom, prenom, sexe, programmeIds: [], allProgrammes: true, ap: false, extra: {} };
+      ? { id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), allProgrammes: false, ap: true, extra }
+      : { id: uid(), nom, prenom, sexe, programmeIds: [], allProgrammes: true, ap: false, extra };
     d.membres.push(membre);
     await saveData(); showToast(ap ? 'Membre ponctuel ajouté (AP)' : 'Membre ajouté — pointable dans tous les programmes'); render();
   });
