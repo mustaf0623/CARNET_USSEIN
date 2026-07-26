@@ -239,6 +239,17 @@
   }
   @keyframes rowIn{ from{opacity:0; transform:translateX(-6px);} to{opacity:1; transform:none;} }
   .ledger-row:hover{ background:var(--card-2); }
+
+  /* ---------- Administration : Sections & Utilisateurs ---------- */
+  .admin-section-row{ display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px dashed var(--line); animation:rowIn 0.35s ease both; }
+  .admin-section-row .admin-section-name{ flex:1; min-width:0; }
+  .admin-section-actions{ display:flex; gap:6px; flex-shrink:0; }
+  .admin-user-row{ display:flex; align-items:flex-start; gap:10px; padding:13px 4px; border-bottom:1px dashed var(--line); flex-wrap:wrap; animation:rowIn 0.35s ease both; }
+  .admin-user-identity{ flex:1; min-width:140px; }
+  .admin-user-email{ font-size:11px; color:var(--ink-faint); }
+  .admin-user-controls{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .admin-user-controls select{ min-width:0; }
+  .admin-user-active-label{ font-size:11px; display:flex; align-items:center; gap:4px; white-space:nowrap; }
   .prog-name{ font-weight:700; font-size:13.5px; flex:1; min-width:0; }
   .prog-bar-wrap{ flex:2; height:8px; border-radius:5px; overflow:hidden; background:var(--terracotta-tint); display:flex; }
   .prog-bar-fill{ height:100%; background:var(--emerald); border-radius:5px 0 0 5px; transition:width 0.6s cubic-bezier(.2,.8,.3,1); }
@@ -387,6 +398,12 @@
       background:rgba(255,255,255,0.08);
     }
     main{ padding:22px 18px 50px; }
+    .admin-section-row{ flex-wrap:wrap; }
+    .admin-section-actions{ width:100%; justify-content:flex-end; }
+    .admin-user-row{ flex-direction:column; align-items:stretch; }
+    .admin-user-controls{ width:100%; }
+    .admin-user-controls select{ flex:1; }
+    .admin-user-controls .save-user-btn{ width:100%; justify-content:center; }
   }
 </style>
 </head>
@@ -592,6 +609,7 @@ function handleRemoteChange() {
   clearTimeout(remoteChangeTimer);
   remoteChangeTimer = setTimeout(async () => {
     try {
+      if (!state.activeSectionId) return;
       // On envoie d'abord tout changement local en attente : sans ça, un
       // rafraîchissement déclenché par le changement d'un autre appareil
       // pourrait écraser une saisie locale pas encore synchronisée.
@@ -1101,8 +1119,8 @@ function attachTabEvents() {
 function renderAdministration() {
   const sectionOptions = `<option value="">Aucune Section</option>` + sbSections.map(s => `<option value="${s.id}">${escapeHtml(s.nom)}</option>`).join('');
   return `<div class="page-head"><div><div class="eyebrow">Super-administration</div><h1 class="page-title">Sections et utilisateurs</h1><p class="page-sub">Créez les Sections et attribuez les accès.</p></div></div>
-    <div class="grid grid-2"><div class="card"><h3 class="card-title">Nouvelle Section</h3><div style="display:flex;gap:8px;"><input id="newSectionName" placeholder="Nom de la Section"><button class="btn btn-primary" id="newSectionBtn">Créer</button></div><div class="ledger" style="margin-top:14px;">${sbSections.map(s => `<div class="ledger-row"><div class="prog-name">${escapeHtml(s.nom)}</div></div>`).join('') || emptyRow('Aucune Section.')}</div></div>
-    <div class="card"><h3 class="card-title">Utilisateurs</h3><div class="ledger">${sbUsers.map(u => `<div class="ledger-row" style="align-items:flex-start;gap:8px;"><div style="flex:1;min-width:120px;"><div class="prog-name">${escapeHtml(u.name || 'Sans nom')}</div><div style="font-size:11px;color:var(--ink-faint);">${escapeHtml(u.email || u.id)}</div></div><select class="admin-user-section" data-id="${u.id}">${sectionOptions.replace(`value="${u.section_id}"`, `value="${u.section_id}" selected`)}</select><select class="admin-user-role" data-id="${u.id}"><option value="utilisateur" ${u.role !== 'super_admin' ? 'selected' : ''}>Utilisateur</option><option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super-admin</option></select><label style="font-size:11px;display:flex;align-items:center;gap:4px;"><input class="admin-user-active" data-id="${u.id}" type="checkbox" ${u.active !== false ? 'checked' : ''}>actif</label><button class="btn btn-ghost btn-sm save-user-btn" data-id="${u.id}">Enregistrer</button></div>`).join('') || emptyRow('Aucun utilisateur.')}</div></div></div>`;
+    <div class="grid grid-2"><div class="card"><h3 class="card-title">Nouvelle Section</h3><div style="display:flex;gap:8px;"><input id="newSectionName" placeholder="Nom de la Section"><button class="btn btn-primary" id="newSectionBtn">Créer</button></div><div class="ledger" style="margin-top:14px;">${sbSections.map(s => `<div class="admin-section-row" data-id="${s.id}"><input class="admin-section-name" data-id="${s.id}" value="${escapeHtml(s.nom)}" /><div class="admin-section-actions"><button class="btn btn-ghost btn-sm rename-section-btn" data-id="${s.id}">Renommer</button><button class="btn btn-ghost btn-sm delete-section-btn" data-id="${s.id}">Supprimer</button></div></div>`).join('') || emptyRow('Aucune Section.')}</div></div>
+    <div class="card"><h3 class="card-title">Utilisateurs</h3><div class="ledger">${sbUsers.map(u => `<div class="admin-user-row" data-id="${u.id}"><div class="admin-user-identity"><div class="prog-name">${escapeHtml(u.name || 'Sans nom')}</div><div class="admin-user-email">${escapeHtml(u.email || u.id)}</div></div><div class="admin-user-controls"><select class="admin-user-section" data-id="${u.id}">${sectionOptions.replace(`value="${u.section_id}"`, `value="${u.section_id}" selected`)}</select><select class="admin-user-role" data-id="${u.id}"><option value="utilisateur" ${u.role !== 'super_admin' ? 'selected' : ''}>Utilisateur</option><option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super-admin</option></select><label class="admin-user-active-label"><input class="admin-user-active" data-id="${u.id}" type="checkbox" ${u.active !== false ? 'checked' : ''}>actif</label><button class="btn btn-ghost btn-sm save-user-btn" data-id="${u.id}">Enregistrer</button></div></div>`).join('') || emptyRow('Aucun utilisateur.')}</div></div></div>`;
 }
 function attachAdministrationEvents() {
   const create = document.getElementById('newSectionBtn');
@@ -1113,6 +1131,26 @@ function attachAdministrationEvents() {
     if (error) { showToast(error.message); return; }
     await loadAccessContext(); render();
   });
+  document.querySelectorAll('.rename-section-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    const nom = document.querySelector(`.admin-section-name[data-id="${id}"]`).value.trim();
+    if (!nom) { showToast('Le nom de la Section ne peut pas être vide'); return; }
+    const { error } = await sb.from('sections').update({ nom }).eq('id', id);
+    if (error) { showToast(error.message); return; }
+    await loadAccessContext(); showToast('Section renommée'); render();
+  }));
+  document.querySelectorAll('.delete-section-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.id;
+    const nom = (sbSections.find(s => s.id === id) || {}).nom || 'cette Section';
+    if (!confirm(`Supprimer la Section « ${nom} » ? Tous ses programmes, membres, séances et pointages seront définitivement supprimés. Cette action est irréversible.`)) return;
+    const { error } = await sb.from('sections').delete().eq('id', id);
+    if (error) { showToast(error.message); return; }
+    if (state.activeSectionId === id) state.activeSectionId = null;
+    await loadAccessContext();
+    state.data = await pullFromSupabase();
+    updateSnapshotsFromCurrent();
+    showToast('Section supprimée'); render();
+  }));
   document.querySelectorAll('.save-user-btn').forEach(btn => btn.addEventListener('click', async () => {
     const id = btn.dataset.id;
     const section_id = document.querySelector(`.admin-user-section[data-id="${id}"]`).value || null;
@@ -2225,7 +2263,6 @@ async function signOutSupabase() {
 /* ================= INIT ================= */
 async function startApp() {
   const localData = await loadData();
-  syncState = await loadSyncState() || (localData ? { pending: true, snapshots: null } : syncState);
   let data = localData || emptyData();
   let remoteReady = false;
   if (sb && sbUser) {
@@ -2238,7 +2275,6 @@ async function startApp() {
       }
       if (localData && syncState.pending) {
         state.data = localData;
-        restoreSnapshots(syncState.snapshots);
         if (!await pushToSupabase()) throw new Error('synchronisation locale impossible');
       }
       data = await pullFromSupabase();
@@ -2274,6 +2310,20 @@ async function reconcileSync(manual) {
   const btn = document.getElementById('syncBtn');
   if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
   try {
+    // state.activeSectionId n'est jamais persisté localement : sur un retour
+    // en ligne après un chargement avec données locales, il n'a encore
+    // jamais été rempli. On le (re)charge avant toute chose, sans quoi
+    // pullFromSupabase renverrait un jeu de données vide qui écraserait
+    // les données locales encore non synchronisées.
+    if (!sbProfile || !state.activeSectionId) {
+      await loadAccessContext();
+    }
+    if (!sbProfile.active || !state.activeSectionId) {
+      // Compte désactivé ou pas encore rattaché à une Section : on ne
+      // touche surtout pas aux données locales, on ne fait rien de plus.
+      if (manual) showToast('Compte en attente de rattachement à une Section');
+      return;
+    }
     await pushToSupabase();
     const remote = await pullFromSupabase();
     state.data.programmes = remote.programmes;
@@ -2300,6 +2350,12 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
 (async function init() {
   const minSplash = new Promise(res => setTimeout(res, 1250));
   const localData = await loadData(); // toujours essayé en premier, indépendamment de Supabase
+  // La liste des actions locales pas encore envoyées (snapshots de la
+  // dernière synchro connue) doit être restaurée dès maintenant, quel que
+  // soit le chemin suivi ensuite — sinon les suppressions faites hors ligne
+  // ne peuvent plus être détectées lors de la prochaine synchro.
+  syncState = await loadSyncState() || (localData ? { pending: true, snapshots: null } : syncState);
+  if (syncState.snapshots) restoreSnapshots(syncState.snapshots);
 
   if (supabaseConfigured() && window.supabase) {
     const syncBtnEl = document.getElementById('syncBtn');
