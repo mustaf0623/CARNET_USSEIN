@@ -1857,7 +1857,9 @@ async function confirmImport() {
 function renderRapports() {
   const d = state.data;
   const threshold = state.absenceThreshold || 3;
-  const watchlist = absenceWatchlist(d, threshold);
+  const watchlistProgId = state.watchlistProgramme || 'tous';
+  let watchlist = absenceWatchlist(d, threshold);
+  if (watchlistProgId !== 'tous') watchlist = watchlist.filter(r => r.programme.id === watchlistProgId);
   const scope = state.reportScope || 'global';
   const sessionId = state.reportSessionId || 'toutes';
   const scopeOptions = [`<option value="global" ${scope === 'global' ? 'selected' : ''}>Tous les programmes</option>`].concat(
@@ -1920,25 +1922,35 @@ function renderRapports() {
     <div class="card" style="margin-top:20px;">
       <h3 class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <span>Répertoire — absences consécutives</span>
-        <span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-dim);">
+        <span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-dim);flex-wrap:wrap;">
+          Programme
+          <select id="watchlistProgramme" style="padding:5px 8px;">
+            <option value="tous" ${watchlistProgId === 'tous' ? 'selected' : ''}>Tous les programmes</option>
+            ${d.programmes.map(p => `<option value="${p.id}" ${watchlistProgId === p.id ? 'selected' : ''}>${escapeHtml(p.nom)}</option>`).join('')}
+          </select>
           Seuil <input type="number" id="absenceThreshold" min="1" max="20" value="${threshold}" style="width:56px;text-align:center;padding:5px 6px;">
         </span>
       </h3>
-      <div class="card-sub">Membres permanents (hors "Ponctuel/AP") ayant ${threshold} absence${threshold > 1 ? 's' : ''} ou plus d’affilée sur un programme.</div>
+      <div class="card-sub">Membres permanents (hors "Ponctuel/AP") ayant ${threshold} absence${threshold > 1 ? 's' : ''} ou plus d’affilée${watchlistProgId === 'tous' ? ' sur un programme' : ' sur ' + escapeHtml((d.programmes.find(p => p.id === watchlistProgId) || {}).nom || 'ce programme')}.</div>
       <div class="ledger" style="margin-top:6px;">
         ${watchlist.length ? watchlist.map(r => `<div class="ledger-row">
           <div style="flex:1;min-width:0;">
             <div class="prog-name">${escapeHtml(r.membre.prenom)} ${escapeHtml(r.membre.nom)}</div>
-            <div style="font-size:11.5px;color:var(--ink-faint);">${escapeHtml(r.programme.nom)}${r.lastDate ? ' — dernière séance pointée : ' + fmtDate(r.lastDate) : ''}</div>
+            ${watchlistProgId === 'tous' ? `<div style="font-size:11.5px;color:var(--ink-faint);">${escapeHtml(r.programme.nom)}${r.lastDate ? ' — dernière séance pointée : ' + fmtDate(r.lastDate) : ''}</div>` : (r.lastDate ? `<div style="font-size:11.5px;color:var(--ink-faint);">Dernière séance pointée : ${fmtDate(r.lastDate)}</div>` : '')}
           </div>
           <span class="pill" style="background:var(--terracotta-tint);border-color:var(--terracotta);color:var(--terracotta-dim);font-weight:700;white-space:nowrap;">${r.streak} absences</span>
-        </div>`).join('') : emptyRow('Aucun membre permanent avec 3 absences consécutives ou plus.')}
+        </div>`).join('') : emptyRow(`Aucun membre permanent avec ${threshold} absence${threshold > 1 ? 's' : ''} consécutive${threshold > 1 ? 's' : ''} ou plus.`)}
       </div>
     </div>
   `;
 }
 
 function attachRapportsEvents() {
+  const watchlistProgSel = document.getElementById('watchlistProgramme');
+  if (watchlistProgSel) watchlistProgSel.addEventListener('change', e => {
+    state.watchlistProgramme = e.target.value;
+    render();
+  });
   const thresholdInput = document.getElementById('absenceThreshold');
   if (thresholdInput) thresholdInput.addEventListener('change', e => {
     const v = parseInt(e.target.value, 10);
