@@ -541,7 +541,7 @@ async function pullFromSupabase() {
   ]);
   if (progRes.error) throw progRes.error;
   const programmes = (progRes.data || []).map(r => ({ id: r.id, nom: r.nom }));
-  const membres = (memRes.data || []).map(r => ({ id: r.id, nom: r.nom, prenom: r.prenom, sexe: r.sexe, programmeIds: r.programme_ids || [], allProgrammes: !!r.all_programmes, ap: !!r.ap }));
+  const membres = (memRes.data || []).map(r => ({ id: r.id, nom: r.nom, prenom: r.prenom, sexe: r.sexe, programmeIds: r.programme_ids || [], allProgrammes: !!r.all_programmes, ap: !!r.ap, extra: r.extra || {} }));
   const sessions = (sessRes.data || []).map(r => ({ id: r.id, programmeId: r.programme_id, date: r.date, label: r.label }));
   const pointages = (ptRes.data || []).map(r => ({ id: r.id, sessionId: r.session_id, membreId: r.membre_id, statut: r.statut }));
   const name = (profRes.data && profRes.data.name) || '';
@@ -586,7 +586,7 @@ async function pushToSupabase() {
     const section_id = state.activeSectionId;
     if (!section_id) throw new Error('Aucune Section attribuée');
     snapshotMaps.programmes = await syncTable('programmes', state.data.programmes, p => ({ id: p.id, nom: p.nom, section_id }), snapshotMaps.programmes);
-    snapshotMaps.membres = await syncTable('membres', state.data.membres, m => ({ id: m.id, nom: m.nom, prenom: m.prenom, sexe: m.sexe, programme_ids: m.programmeIds || [], all_programmes: !!m.allProgrammes, ap: !!m.ap, section_id }), snapshotMaps.membres);
+    snapshotMaps.membres = await syncTable('membres', state.data.membres, m => ({ id: m.id, nom: m.nom, prenom: m.prenom, sexe: m.sexe, programme_ids: m.programmeIds || [], all_programmes: !!m.allProgrammes, ap: !!m.ap, extra: m.extra || {}, section_id }), snapshotMaps.membres);
     snapshotMaps.sessions = await syncTable('sessions', state.data.sessions, s => ({ id: s.id, programme_id: s.programmeId, date: s.date, label: s.label, section_id }), snapshotMaps.sessions);
     snapshotMaps.pointages = await syncTable('pointages', state.data.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut, section_id }), snapshotMaps.pointages);
     try { await sb.from('profiles').upsert({ id: sbUser.id, name: state.data.profile.name }); } catch (e) { /* non bloquant */ }
@@ -1016,6 +1016,12 @@ function renderMemberDetailModal() {
           <div style="font-size:11.5px;color:var(--ink-faint);margin:-8px 0 4px 0;padding-left:2px;">${s.present} présence${s.present > 1 ? 's' : ''} · ${s.absent} absence${s.absent > 1 ? 's' : ''} · ${s.nbSeancesProgramme} séance${s.nbSeancesProgramme > 1 ? 's' : ''} au programme</div>
         `).join('') : emptyRow('Aucun programme pour ce membre.')}
       </div>
+      ${m.extra && Object.keys(m.extra).length ? `
+        <div class="card-title" style="font-size:14px;margin:16px 0 8px;">Informations importées</div>
+        <div class="ledger" style="max-height:200px;overflow-y:auto;">
+          ${Object.entries(m.extra).map(([k, v]) => `<div class="ledger-row"><div style="font-size:12.5px;color:var(--ink-faint);flex:1;">${escapeHtml(k)}</div><div style="font-size:13px;font-weight:600;text-align:right;max-width:60%;word-break:break-word;">${escapeHtml(String(v))}</div></div>`).join('')}
+        </div>
+      ` : ''}
       <button class="btn btn-ghost" id="memberDetailCloseBtn" style="width:100%;justify-content:center;margin-top:16px;">Fermer</button>
     </div>
   </div>`;
@@ -1646,9 +1652,22 @@ function renderMembres() {
     <div class="card" style="margin-top:16px;">
       <h3 class="card-title">Tous les membres</h3>
       <div class="card-sub">${d.membres.length} au total${d.membres.some(m => m.ap) ? ' · ' + d.membres.filter(m => m.ap).length + ' membre(s) ponctuel(s) (AP)' : ''}</div>
-      ${d.membres.length ? `<table class="data-table"><thead><tr><th>Nom</th><th>Sexe</th><th>Programmes</th><th></th></tr></thead><tbody>
-        ${d.membres.map(m => `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button>${m.ap ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);">AP</span>` : ''}</td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${m.allProgrammes ? `<span class="pill" style="background:var(--emerald-tint);border-color:var(--emerald);color:var(--emerald-dim);">Tous les programmes</span>` : m.programmeIds.map(pid => `<span class="pill">${escapeHtml((d.programmes.find(p => p.id === pid) || {}).nom || '—')}</span>`).join('')}</td><td><button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button></td></tr>`).join('')}
-      </tbody></table>` : emptyRow('Aucun membre pour l’instant.')}
+      <div style="margin:12px 0 14px;">
+        <input type="text" id="membreSearch" placeholder="Rechercher un membre (nom, prénom...)" value="${escapeHtml(state.membreSearch || '')}" style="width:100%;">
+      </div>
+      ${(() => {
+        const q = (state.membreSearch || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const filtered = q ? d.membres.filter(m => {
+          if (norm(`${m.prenom} ${m.nom}`).includes(q)) return true;
+          return Object.values(m.extra || {}).some(v => norm(v).includes(q));
+        }) : d.membres;
+        if (!d.membres.length) return emptyRow('Aucun membre pour l’instant.');
+        if (!filtered.length) return emptyRow('Aucun membre ne correspond à cette recherche.');
+        return `<table class="data-table"><thead><tr><th>Nom</th><th>Sexe</th><th>Programmes</th><th></th></tr></thead><tbody>
+        ${filtered.map(m => `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button>${m.ap ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);">AP</span>` : ''}${m.extra && Object.keys(m.extra).length ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:10px;" title="Informations importées disponibles">i</span>` : ''}</td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${m.allProgrammes ? `<span class="pill" style="background:var(--emerald-tint);border-color:var(--emerald);color:var(--emerald-dim);">Tous les programmes</span>` : m.programmeIds.map(pid => `<span class="pill">${escapeHtml((d.programmes.find(p => p.id === pid) || {}).nom || '—')}</span>`).join('')}</td><td><button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button></td></tr>`).join('')}
+      </tbody></table>`;
+      })()}
     </div>
 
     <div class="card" style="margin-top:16px;border-color:var(--terracotta-tint);">
@@ -1710,6 +1729,15 @@ function guessMapping(headers) {
 
 function attachMembresEvents() {
   const d = state.data;
+  const membreSearch = document.getElementById('membreSearch');
+  if (membreSearch) membreSearch.addEventListener('input', e => {
+    state.membreSearch = e.target.value;
+    const pos = e.target.selectionStart;
+    render();
+    const again = document.getElementById('membreSearch');
+    if (again) { again.focus(); again.setSelectionRange(pos, pos); }
+  });
+
   const addProg = document.getElementById('addProgBtn');
   if (addProg) addProg.addEventListener('click', async () => {
     const input = document.getElementById('newProgName');
@@ -1746,8 +1774,8 @@ function attachMembresEvents() {
     const apBtn = document.querySelector('#newMembreType .status-btn.active');
     const ap = !!(apBtn && apBtn.dataset.ap === '1');
     const membre = ap
-      ? { id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), allProgrammes: false, ap: true }
-      : { id: uid(), nom, prenom, sexe, programmeIds: [], allProgrammes: true, ap: false };
+      ? { id: uid(), nom, prenom, sexe, programmeIds: Array.from(selectedProgs), allProgrammes: false, ap: true, extra: {} }
+      : { id: uid(), nom, prenom, sexe, programmeIds: [], allProgrammes: true, ap: false, extra: {} };
     d.membres.push(membre);
     await saveData(); showToast(ap ? 'Membre ponctuel ajouté (AP)' : 'Membre ajouté — pointable dans tous les programmes'); render();
   });
@@ -1835,6 +1863,7 @@ function handleFile(e) {
 async function confirmImport() {
   const d = state.data;
   const map = state.importMapping;
+  const mappedHeaders = new Set(Object.values(map).filter(Boolean));
   let created = 0;
 
   state.importRows.forEach(row => {
@@ -1843,7 +1872,17 @@ async function confirmImport() {
     if (!nom && !prenom) return;
     let sexeRaw = (map.sexe ? String(row[map.sexe]) : '').trim().toLowerCase();
     const sexe = ['f', 'femme', 'female', 'w'].includes(sexeRaw) ? 'F' : 'H';
-    d.membres.push({ id: uid(), nom: String(nom).trim(), prenom: String(prenom).trim(), sexe, programmeIds: [], allProgrammes: true });
+    // Toute colonne du fichier non utilisée pour prénom/nom/sexe est conservée
+    // telle quelle (nom de colonne d'origine → valeur), consultable ensuite
+    // dans la fiche détaillée du membre.
+    const extra = {};
+    Object.keys(row).forEach(h => {
+      if (mappedHeaders.has(h)) return;
+      const v = row[h];
+      if (v === undefined || v === null || String(v).trim() === '') return;
+      extra[h] = String(v).trim();
+    });
+    d.membres.push({ id: uid(), nom: String(nom).trim(), prenom: String(prenom).trim(), sexe, programmeIds: [], allProgrammes: true, extra });
     created++;
   });
 
