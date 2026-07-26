@@ -1,7 +1,7 @@
 // sw.js — Carnet
 // Stratégie : Stale-While-Revalidate pour les ressources de l'app,
 // + cache des assets externes utilisés (CDN, polices) et fallback navigation hors-ligne.
-const CACHE_NAME = 'carnet-v8';
+const CACHE_NAME = 'carnet-v10';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -27,12 +27,16 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
+      const putFresh = async (url) => {
+        try {
+          const resp = await fetch(url, { cache: 'no-store' });
+          if (resp && (resp.ok || resp.type === 'opaque')) await cache.put(url, resp.clone());
+        } catch (e) { /* noop — sera retenté via le fetch handler */ }
+      };
       try {
-        await Promise.allSettled(
-          [...CORE_ASSETS, ...EXTERNAL_ASSETS].map((asset) => cache.add(asset).catch(() => undefined))
-        );
+        await Promise.allSettled([...CORE_ASSETS, ...EXTERNAL_ASSETS].map(putFresh));
       } catch (err) {
-        try { await Promise.allSettled(CORE_ASSETS.map((asset) => cache.add(asset).catch(() => undefined))); } catch (e) { /* noop */ }
+        try { await Promise.allSettled(CORE_ASSETS.map(putFresh)); } catch (e) { /* noop */ }
       }
     })()
   );
@@ -56,10 +60,13 @@ self.addEventListener('fetch', (event) => {
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(req);
 
-    // Navigation (page load) : Network-first, fallback vers index.html en hors-ligne
+    // Navigation (page load) : Network-first, fallback vers index.html en hors-ligne.
+    // cache: 'no-store' est essentiel ici — sans ça, ce fetch() peut lui-même
+    // être servi depuis le cache HTTP du navigateur (fréquent sur mobile),
+    // ce qui annule complètement la stratégie "network-first".
     if (req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html')) {
       try {
-        const netResp = await fetch(req);
+        const netResp = await fetch(req, { cache: 'no-store' });
         if (netResp) {
           // Enregistrez la réponse réseau (utile pour mise à jour)
           try { cache.put(req, netResp.clone()); } catch (e) { /* noop */ }
