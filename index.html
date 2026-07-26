@@ -2328,9 +2328,12 @@ async function reconcileSync(manual) {
     // jamais été rempli. On le (re)charge avant toute chose, sans quoi
     // pullFromSupabase renverrait un jeu de données vide qui écraserait
     // les données locales encore non synchronisées.
-    if (!sbProfile || !state.activeSectionId) {
-      await loadAccessContext();
-    }
+    // On recharge systématiquement le profil, les Sections et les
+    // utilisateurs à chaque synchro (pas seulement s'ils manquent) : sinon
+    // un changement fait par un autre appareil (renommage de Section,
+    // changement de rôle...) ne se voit qu'après avoir tué puis rouvert
+    // l'app, jamais via un simple rafraîchissement.
+    await loadAccessContext();
     if (!sbProfile.active || !state.activeSectionId) {
       // Compte désactivé ou pas encore rattaché à une Section : on ne
       // touche surtout pas aux données locales, on ne fait rien de plus.
