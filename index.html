@@ -647,6 +647,7 @@ function emptyData() {
 let state = {
   data: null,
   tab: 'dashboard',
+  absenceThreshold: 3,
   dashProgFilter: 'global',
   dashYearFilter: 'toutes',
   pointageProgId: null,
@@ -837,6 +838,36 @@ function programStats(data, progId, yearFilter) {
   const membresPresentsUneFois = new Set(pts.filter(p => p.statut === 'present').map(p => p.membreId));
   const tauxParticipation = membresInscrits.length ? Math.round((membresPresentsUneFois.size / membresInscrits.length) * 100) : 0;
   return { tauxPresence, tauxAbsence: 100 - tauxPresence, tauxParticipation, nbSessions: sessions.length, nbMembres: membresInscrits.length, present, total };
+}
+// Série d'absences consécutives la plus récente d'un membre sur un programme
+// (une présence remet la série à zéro ; une séance non pointée pour ce
+// membre est ignorée — elle ne casse ni ne compte dans la série).
+function consecutiveAbsenceStreak(data, membreId, progId) {
+  const sessions = data.sessions.filter(s => s.programmeId === progId).sort((a, b) => a.date.localeCompare(b.date));
+  let streak = 0;
+  let lastDate = null;
+  sessions.forEach(s => {
+    const pt = data.pointages.find(p => p.sessionId === s.id && p.membreId === membreId);
+    if (!pt) return;
+    if (pt.statut === 'absent') { streak++; lastDate = s.date; }
+    else { streak = 0; lastDate = null; }
+  });
+  return { streak, lastDate };
+}
+// Répertoire des membres permanents (non "Ponctuel/AP") ayant `seuil` absences
+// consécutives ou plus sur au moins un programme.
+function absenceWatchlist(data, seuil) {
+  seuil = seuil || 3;
+  const rows = [];
+  data.membres.filter(m => !m.ap).forEach(m => {
+    data.programmes.forEach(p => {
+      if (!memberInProgramme(m, p.id)) return;
+      const { streak, lastDate } = consecutiveAbsenceStreak(data, m.id, p.id);
+      if (streak >= seuil) rows.push({ membre: m, programme: p, streak, lastDate });
+    });
+  });
+  rows.sort((a, b) => b.streak - a.streak);
+  return rows;
 }
 function sessionStats(data, sessionId) {
   const pts = data.pointages.filter(p => p.sessionId === sessionId);
@@ -1122,7 +1153,7 @@ function renderAdministration() {
   return `<div class="page-head"><div><div class="eyebrow">Super-administration</div><h1 class="page-title">Sections et utilisateurs</h1><p class="page-sub">Créez les Sections et attribuez les accès.</p></div></div>
     ${offlineNotice}
     <div class="grid grid-2"><div class="card"><h3 class="card-title">Nouvelle Section</h3><div style="display:flex;gap:8px;"><input id="newSectionName" placeholder="Nom de la Section"><button class="btn btn-primary" id="newSectionBtn">Créer</button></div><div class="ledger" style="margin-top:14px;">${sbSections.map(s => `<div class="admin-section-row" data-id="${s.id}"><input class="admin-section-name" data-id="${s.id}" value="${escapeHtml(s.nom)}" /><div class="admin-section-actions"><button class="btn btn-ghost btn-sm rename-section-btn" data-id="${s.id}">Renommer</button><button class="btn btn-ghost btn-sm delete-section-btn" data-id="${s.id}">Supprimer</button></div></div>`).join('') || emptyRow('Aucune Section.')}</div></div>
-    <div class="card"><h3 class="card-title">Utilisateurs</h3><div class="ledger">${sbUsers.map(u => `<div class="admin-user-row" data-id="${u.id}"><div class="admin-user-identity"><div class="prog-name">${escapeHtml(u.name || 'Sans nom')}</div><div class="admin-user-email">${escapeHtml(u.email || u.id)}</div></div><div class="admin-user-controls"><select class="admin-user-section" data-id="${u.id}">${sectionOptions.replace(`value="${u.section_id}"`, `value="${u.section_id}" selected`)}</select><select class="admin-user-role" data-id="${u.id}"><option value="utilisateur" ${u.role !== 'super_admin' ? 'selected' : ''}>Utilisateur</option><option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super-admin</option></select><label class="admin-user-active-label"><input class="admin-user-active" data-id="${u.id}" type="checkbox" ${u.active !== false ? 'checked' : ''}>actif</label><button class="btn btn-ghost btn-sm save-user-btn" data-id="${u.id}">Enregistrer</button></div></div>`).join('') || emptyRow('Aucun utilisateur.')}</div></div></div>`;
+    <div class="card"><h3 class="card-title">Utilisateurs</h3><div class="ledger">${sbUsers.map(u => { const isSelf = u.id === sbUser?.id; return `<div class="admin-user-row" data-id="${u.id}"><div class="admin-user-identity"><div class="prog-name">${escapeHtml(u.name || 'Sans nom')}${isSelf ? ' <span style="font-weight:400;color:var(--ink-faint);">(vous)</span>' : ''}</div><div class="admin-user-email">${escapeHtml(u.email || u.id)}</div>${isSelf ? `<div style="font-size:11px;color:var(--ink-faint);margin-top:2px;">Rôle et statut modifiables uniquement par un autre super-admin</div>` : ''}</div><div class="admin-user-controls"><select class="admin-user-section" data-id="${u.id}">${sectionOptions.replace(`value="${u.section_id}"`, `value="${u.section_id}" selected`)}</select><select class="admin-user-role" data-id="${u.id}" ${isSelf ? 'disabled' : ''}><option value="utilisateur" ${u.role !== 'super_admin' ? 'selected' : ''}>Utilisateur</option><option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super-admin</option></select><label class="admin-user-active-label"><input class="admin-user-active" data-id="${u.id}" type="checkbox" ${u.active !== false ? 'checked' : ''} ${isSelf ? 'disabled' : ''}>actif</label><button class="btn btn-ghost btn-sm save-user-btn" data-id="${u.id}">Enregistrer</button></div></div>`; }).join('') || emptyRow('Aucun utilisateur.')}</div></div></div>`;
 }
 function attachAdministrationEvents() {
   // Le panneau Administration agit directement sur Supabase (données
@@ -1431,7 +1462,7 @@ function renderPointage() {
         <span>${membres.length} membre${membres.length > 1 ? 's' : ''} inscrit${membres.length > 1 ? 's' : ''}</span>
         <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-dim);font-weight:600;cursor:pointer;">
           <input type="checkbox" id="fastModeToggle" ${state.pointageFastMode ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--emerald);">
-          Pointage rapide — cocher les présents, le reste compte absent
+          Pointage rapide — tout le monde est présent par défaut, décochez les absents
         </label>
       </div>
       <div id="memberList">
@@ -1452,9 +1483,14 @@ function sessionOptionsByYear(sessions, selectedId) {
   ).join('');
 }
 function memberRow(m, statut, fastMode) {
+  // En mode rapide, un membre pas encore pointé pour cette séance démarre
+  // "présent" par défaut (au lieu de vide) : il suffit de décocher les
+  // absents. Un statut déjà enregistré (present/absent) est toujours
+  // respecté tel quel.
+  const effectiveStatut = fastMode && statut === undefined ? 'present' : statut;
   const statusHtml = fastMode
     ? `<div class="status-toggle">
-      <button class="status-btn present ${statut === 'present' ? 'active' : ''}" data-statut="present" style="min-width:110px;">${statut === 'present' ? '✓ Présent' : 'Marquer présent'}</button>
+      <button class="status-btn present ${effectiveStatut === 'present' ? 'active' : ''}" data-statut="present" style="min-width:110px;">${effectiveStatut === 'present' ? '✓ Présent' : 'Absent'}</button>
     </div>`
     : `<div class="status-toggle">
       <button class="status-btn present ${statut === 'present' ? 'active' : ''}" data-statut="present">Présent</button>
@@ -1505,7 +1541,7 @@ function attachPointageEvents() {
       const onlyOneBtn = row.querySelectorAll('.status-btn').length === 1;
       row.querySelectorAll('.status-btn').forEach(b => {
         b.classList.remove('active'); b.querySelector('.stamp')?.remove();
-        if (onlyOneBtn) b.textContent = 'Marquer présent';
+        if (onlyOneBtn) b.textContent = 'Absent';
       });
       if (onlyOneBtn && wasActive) return; // re-clic sur "Présent" déjà actif : on le désactive (redevient absent)
       btn.classList.add('active');
@@ -1820,6 +1856,8 @@ async function confirmImport() {
 /* ================= RAPPORTS ================= */
 function renderRapports() {
   const d = state.data;
+  const threshold = state.absenceThreshold || 3;
+  const watchlist = absenceWatchlist(d, threshold);
   const scope = state.reportScope || 'global';
   const sessionId = state.reportSessionId || 'toutes';
   const scopeOptions = [`<option value="global" ${scope === 'global' ? 'selected' : ''}>Tous les programmes</option>`].concat(
@@ -1879,10 +1917,34 @@ function renderRapports() {
         <button class="btn btn-ghost btn-sm" id="changeSignataireBtn" style="margin-top:14px;">Changer le signataire</button>
       </div>
     </div>
+    <div class="card" style="margin-top:20px;">
+      <h3 class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <span>Répertoire — absences consécutives</span>
+        <span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-dim);">
+          Seuil <input type="number" id="absenceThreshold" min="1" max="20" value="${threshold}" style="width:56px;text-align:center;padding:5px 6px;">
+        </span>
+      </h3>
+      <div class="card-sub">Membres permanents (hors "Ponctuel/AP") ayant ${threshold} absence${threshold > 1 ? 's' : ''} ou plus d’affilée sur un programme.</div>
+      <div class="ledger" style="margin-top:6px;">
+        ${watchlist.length ? watchlist.map(r => `<div class="ledger-row">
+          <div style="flex:1;min-width:0;">
+            <div class="prog-name">${escapeHtml(r.membre.prenom)} ${escapeHtml(r.membre.nom)}</div>
+            <div style="font-size:11.5px;color:var(--ink-faint);">${escapeHtml(r.programme.nom)}${r.lastDate ? ' — dernière séance pointée : ' + fmtDate(r.lastDate) : ''}</div>
+          </div>
+          <span class="pill" style="background:var(--terracotta-tint);border-color:var(--terracotta);color:var(--terracotta-dim);font-weight:700;white-space:nowrap;">${r.streak} absences</span>
+        </div>`).join('') : emptyRow('Aucun membre permanent avec 3 absences consécutives ou plus.')}
+      </div>
+    </div>
   `;
 }
 
 function attachRapportsEvents() {
+  const thresholdInput = document.getElementById('absenceThreshold');
+  if (thresholdInput) thresholdInput.addEventListener('change', e => {
+    const v = parseInt(e.target.value, 10);
+    state.absenceThreshold = (v && v > 0) ? v : 3;
+    render();
+  });
   const scopeSel = document.getElementById('reportScope');
   if (scopeSel) scopeSel.addEventListener('change', e => {
     state.reportScope = e.target.value;
