@@ -976,6 +976,37 @@ function tabBtn(id, icon, label) {
 }
 function escapeHtml(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+// Construit une feuille Excel avec des colonnes dimensionnées selon leur
+// contenu (au lieu de la largeur fixe minuscule par défaut) et un contenu
+// centré, en-tête en gras. Le centrage/gras dépend du moteur Excel utilisé
+// pour ouvrir le fichier (Excel/LibreOffice l'appliquent ; certains
+// lecteurs en ligne ignorent le style mais gardent toujours les bonnes
+// largeurs de colonnes, qui elles s'appliquent partout.
+function buildStyledSheet(rows) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const headers = Object.keys(rows[0] || {});
+  ws['!cols'] = headers.map(h => {
+    const maxLen = Math.max(h.length, ...rows.map(r => String(r[h] ?? '').length));
+    return { wch: Math.min(Math.max(maxLen + 3, 12), 42) };
+  });
+  ws['!rows'] = [{ hpt: 20 }];
+  if (ws['!ref']) {
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r; R <= range.e.r; R++) {
+      for (let C = range.s.c; C <= range.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        const cell = ws[addr];
+        if (!cell) continue;
+        cell.s = {
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          font: R === range.s.r ? { bold: true } : {},
+        };
+      }
+    }
+  }
+  return ws;
+}
+
 function openConfirm(title, message, action, confirmLabel) {
   pendingConfirmAction = action;
   state.confirmTitle = title;
@@ -1901,7 +1932,7 @@ function attachMembresEvents() {
       });
       return row;
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const ws = buildStyledSheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Membres');
     XLSX.writeFile(wb, `carnet-export-membres-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -2527,9 +2558,11 @@ if ('serviceWorker' in navigator) {
 /* ================= AUTH (Supabase) ================= */
 let authMode = 'login'; // 'login' | 'signup'
 function renderAuthScreen(errorMsg) {
+  const canGoBack = !!(state.data && (state.data.programmes.length || state.data.membres.length || state.data.sessions.length));
   document.getElementById('app').innerHTML = `
   <div class="onboard-overlay" style="position:fixed;">
-    <div class="onboard-card">
+    <div class="onboard-card" style="position:relative;">
+      ${canGoBack ? `<button id="authBackBtn" title="Retour à l’app" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--card-2);color:var(--ink-dim);font-size:16px;line-height:1;cursor:pointer;">×</button>` : ''}
       <div class="onboard-mark">${ICONS.mark}</div>
       <h2>${authMode === 'login' ? 'Se connecter' : 'Créer un compte'}</h2>
       <p>Connectez-vous pour retrouver les mêmes données sur tous vos appareils.</p>
@@ -2538,11 +2571,16 @@ function renderAuthScreen(errorMsg) {
       <input type="password" id="authPassword" placeholder="Mot de passe" autocomplete="current-password" />
       <button class="btn btn-primary" id="authSubmitBtn" style="width:100%;justify-content:center;margin-top:14px;margin-bottom:10px;">${authMode === 'login' ? 'Se connecter' : 'Créer le compte'}</button>
       <button class="btn btn-ghost" id="authToggleBtn" style="width:100%;justify-content:center;">${authMode === 'login' ? 'Pas encore de compte ? En créer un' : 'Déjà un compte ? Se connecter'}</button>
+      ${canGoBack ? `<button class="btn btn-ghost" id="authBackBtn2" style="width:100%;justify-content:center;margin-top:6px;color:var(--ink-faint);">Continuer sans se connecter</button>` : ''}
     </div>
   </div>`;
   document.getElementById('authSubmitBtn').addEventListener('click', submitAuth);
   document.getElementById('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
   document.getElementById('authToggleBtn').addEventListener('click', () => { authMode = authMode === 'login' ? 'signup' : 'login'; renderAuthScreen(); });
+  if (canGoBack) {
+    document.getElementById('authBackBtn').addEventListener('click', render);
+    document.getElementById('authBackBtn2').addEventListener('click', render);
+  }
 }
 async function submitAuth() {
   const email = document.getElementById('authEmail').value.trim();
@@ -2551,8 +2589,15 @@ async function submitAuth() {
   const btn = document.getElementById('authSubmitBtn');
   btn.disabled = true; btn.textContent = 'Un instant…';
   try {
-    const fn = authMode === 'login' ? sb.auth.signInWithPassword : sb.auth.signUp;
-    const { data, error } = await fn.call(sb.auth, { email, password });
+    // On indique explicitement où revenir après confirmation de l'e-mail :
+    // sans ça, Supabase utilise l'URL par défaut configurée dans son
+    // tableau de bord (souvent restée sur un localhost de développement),
+    // ce qui casse le lien reçu par e-mail sur tout autre appareil.
+    const redirectTo = window.location.origin + window.location.pathname;
+    const fn = authMode === 'login'
+      ? () => sb.auth.signInWithPassword({ email, password })
+      : () => sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } });
+    const { data, error } = await fn();
     if (error) { renderAuthScreen(error.message); return; }
     if (authMode === 'signup' && !data.session) {
       renderAuthScreen('Compte créé — vérifiez votre e-mail pour confirmer, puis connectez-vous.');
