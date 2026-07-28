@@ -604,13 +604,17 @@ async function pushToSupabase() {
   if (syncing) { syncQueued = true; return false; }
   syncing = true;
   try {
+    // Le nom du signataire est lié au compte, pas à une Section : on
+    // l'enregistre en premier et indépendamment du reste, sinon il ne serait
+    // jamais sauvegardé tant qu'aucune Section n'est active (ex: juste après
+    // une promotion en super-admin, avant la création de la 1ère Section).
+    try { await sb.from('profiles').upsert({ id: sbUser.id, name: state.data.profile.name }); } catch (e) { /* non bloquant */ }
     const section_id = state.activeSectionId;
     if (!section_id) throw new Error('Aucune Section attribuée');
     snapshotMaps.programmes = await syncTable('programmes', state.data.programmes, p => ({ id: p.id, nom: p.nom, section_id }), snapshotMaps.programmes);
     snapshotMaps.membres = await syncTable('membres', state.data.membres, m => ({ id: m.id, nom: m.nom, prenom: m.prenom, sexe: m.sexe, programme_ids: m.programmeIds || [], all_programmes: !!m.allProgrammes, ap: !!m.ap, extra: m.extra || {}, section_id }), snapshotMaps.membres);
     snapshotMaps.sessions = await syncTable('sessions', state.data.sessions, s => ({ id: s.id, programme_id: s.programmeId, date: s.date, label: s.label, section_id }), snapshotMaps.sessions);
     snapshotMaps.pointages = await syncTable('pointages', state.data.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut, section_id }), snapshotMaps.pointages);
-    try { await sb.from('profiles').upsert({ id: sbUser.id, name: state.data.profile.name }); } catch (e) { /* non bloquant */ }
     await saveSyncState(false);
     return true;
   } catch (e) {
@@ -1855,8 +1859,8 @@ function renderMembres() {
       <h3 class="card-title" style="color:var(--terracotta-dim);">Zone sensible</h3>
       <div class="card-sub">Réinitialise entièrement l’application : programmes, membres, séances et pointages. Votre nom de signataire est conservé.</div>
       <button class="btn" id="resetAllBtn" style="background:var(--terracotta);border-color:transparent;color:#fff;">Réinitialiser toutes les données</button>
-      <div class="card-sub" style="margin-top:16px;">Supprime uniquement les informations importées (base importée) de tous les membres — les membres eux-mêmes, leurs programmes et leur historique de pointage restent intacts.</div>
-      <button class="btn btn-ghost" id="clearImportedDataBtn" style="border-color:var(--terracotta);color:var(--terracotta-dim);">Supprimer toute la base importée</button>
+      <div class="card-sub" style="margin-top:16px;">Supprime tous les membres (permanents et ponctuels) et leurs pointages associés — retour à zéro membre, comme s’il n’y avait jamais eu d’import. Les programmes et les séances restent intacts.</div>
+      <button class="btn btn-ghost" id="clearImportedDataBtn" style="border-color:var(--terracotta);color:var(--terracotta-dim);">Supprimer tous les membres</button>
     </div>
   `;
 }
@@ -2061,15 +2065,17 @@ function attachMembresEvents() {
 
   const clearImportedBtn = document.getElementById('clearImportedDataBtn');
   if (clearImportedBtn) clearImportedBtn.addEventListener('click', () => {
-    const count = d.membres.filter(m => m.extra && Object.keys(m.extra).length).length;
-    if (!count) { showToast('Aucune information importée à supprimer'); return; }
+    const count = d.membres.length;
+    if (!count) { showToast('Aucun membre à supprimer'); return; }
     openConfirm(
-      'Supprimer toute la base importée ?',
-      `Les informations complémentaires (base importée) de ${count} membre${count > 1 ? 's' : ''} seront définitivement effacées, sur tous les appareils synchronisés. Les membres, leurs programmes et leur historique de pointage restent intacts.`,
+      'Supprimer tous les membres ?',
+      `${count} membre${count > 1 ? 's' : ''} et tous les pointages associés seront définitivement supprimés, sur tous les appareils synchronisés. Les programmes et les séances restent intacts. Cette action est irréversible.`,
       async () => {
-        d.membres.forEach(m => { m.extra = {}; });
+        const membreIds = new Set(d.membres.map(m => m.id));
+        d.pointages = d.pointages.filter(p => !membreIds.has(p.membreId));
+        d.membres = [];
         await saveData();
-        showToast('Base importée supprimée');
+        showToast('Tous les membres ont été supprimés');
       },
       'Supprimer'
     );
