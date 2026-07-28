@@ -363,6 +363,7 @@
     padding:38px 36px; width:min(400px, 90vw); text-align:center;
     box-shadow:0 30px 70px -20px rgba(18,35,24,0.4);
     animation:cardPop 0.5s cubic-bezier(.2,.8,.3,1) both;
+    max-height:88vh; overflow-y:auto;
   }
   @keyframes cardPop{ from{ opacity:0; transform:translateY(16px) scale(0.97); } to{ opacity:1; transform:none; } }
   .onboard-mark{ width:52px;height:52px;border-radius:14px; margin:0 auto 18px;
@@ -1052,6 +1053,7 @@ function renderMemberDetailModal() {
   const stats = memberStats(d, m.id, yearFilter);
   return `
   <div class="onboard-overlay" id="memberDetailOverlay">
+    <button id="memberDetailCloseFixedBtn" title="Fermer" style="position:fixed;top:16px;right:16px;z-index:200;width:36px;height:36px;border-radius:50%;border:1px solid rgba(237,241,229,0.3);background:rgba(18,35,24,0.75);backdrop-filter:blur(4px);color:#fff;font-size:18px;line-height:1;cursor:pointer;">×</button>
     <div class="onboard-card" style="width:min(480px, 92vw);text-align:left;">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
         <div class="avatar" style="width:44px;height:44px;font-size:16px;">${initials(m.nom, m.prenom)}</div>
@@ -1098,6 +1100,7 @@ function renderMemberDetailModal() {
 }
 function attachMemberDetailModal() {
   document.getElementById('memberDetailCloseBtn').addEventListener('click', () => { state.memberDetailId = null; render(); });
+  document.getElementById('memberDetailCloseFixedBtn')?.addEventListener('click', () => { state.memberDetailId = null; render(); });
   document.getElementById('memberDetailOverlay').addEventListener('click', (e) => { if (e.target.id === 'memberDetailOverlay') { state.memberDetailId = null; render(); } });
   const yearSel = document.getElementById('memberDetailYear');
   if (yearSel) yearSel.addEventListener('change', e => { state.dashYearFilter = e.target.value; render(); });
@@ -1852,6 +1855,8 @@ function renderMembres() {
       <h3 class="card-title" style="color:var(--terracotta-dim);">Zone sensible</h3>
       <div class="card-sub">Réinitialise entièrement l’application : programmes, membres, séances et pointages. Votre nom de signataire est conservé.</div>
       <button class="btn" id="resetAllBtn" style="background:var(--terracotta);border-color:transparent;color:#fff;">Réinitialiser toutes les données</button>
+      <div class="card-sub" style="margin-top:16px;">Supprime uniquement les informations importées (base importée) de tous les membres — les membres eux-mêmes, leurs programmes et leur historique de pointage restent intacts.</div>
+      <button class="btn btn-ghost" id="clearImportedDataBtn" style="border-color:var(--terracotta);color:var(--terracotta-dim);">Supprimer toute la base importée</button>
     </div>
   `;
 }
@@ -2051,6 +2056,22 @@ function attachMembresEvents() {
       'Programmes, membres, séances et pointages seront définitivement supprimés. Cette action est irréversible.',
       resetAppData,
       'Réinitialiser'
+    );
+  });
+
+  const clearImportedBtn = document.getElementById('clearImportedDataBtn');
+  if (clearImportedBtn) clearImportedBtn.addEventListener('click', () => {
+    const count = d.membres.filter(m => m.extra && Object.keys(m.extra).length).length;
+    if (!count) { showToast('Aucune information importée à supprimer'); return; }
+    openConfirm(
+      'Supprimer toute la base importée ?',
+      `Les informations complémentaires (base importée) de ${count} membre${count > 1 ? 's' : ''} seront définitivement effacées, sur tous les appareils synchronisés. Les membres, leurs programmes et leur historique de pointage restent intacts.`,
+      async () => {
+        d.membres.forEach(m => { m.extra = {}; });
+        await saveData();
+        showToast('Base importée supprimée');
+      },
+      'Supprimer'
     );
   });
 }
