@@ -2666,7 +2666,14 @@ async function startApp() {
     try {
       await loadAccessContext();
       if (!sbProfile.active || !state.activeSectionId) {
-        state.data = emptyData();
+        // Compte pas encore rattaché à une Section (ou désactivé) : on ne
+        // doit surtout pas écraser les données locales déjà présentes,
+        // en particulier le nom du signataire saisi avant la connexion —
+        // sans ça il serait perdu et jamais poussé vers Supabase.
+        state.data = localData || emptyData();
+        if (localData && localData.profile && localData.profile.name) {
+          try { await sb.from('profiles').upsert({ id: sbUser.id, name: localData.profile.name }); } catch (e) { /* non bloquant, retenté plus tard */ }
+        }
         render();
         return;
       }
