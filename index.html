@@ -565,7 +565,16 @@ async function pullFromSupabase() {
   const membres = (memRes.data || []).map(r => ({ id: r.id, nom: r.nom, prenom: r.prenom, sexe: r.sexe, programmeIds: r.programme_ids || [], allProgrammes: !!r.all_programmes, ap: !!r.ap, extra: r.extra || {} }));
   const sessions = (sessRes.data || []).map(r => ({ id: r.id, programmeId: r.programme_id, date: r.date, label: r.label }));
   const pointages = (ptRes.data || []).map(r => ({ id: r.id, sessionId: r.session_id, membreId: r.membre_id, statut: r.statut }));
-  const name = (profRes.data && profRes.data.name) || '';
+  // Le nom du signataire ne doit JAMAIS être effacé par un pull : si le
+  // serveur ne renvoie rien (jamais réellement sauvegardé, quelle qu'en soit
+  // la raison), on garde le nom déjà connu localement — et on en profite
+  // pour tenter de réparer l'enregistrement côté serveur au passage.
+  const remoteName = (profRes.data && profRes.data.name) || '';
+  const localName = (state.data && state.data.profile && state.data.profile.name) || '';
+  const name = remoteName || localName;
+  if (!remoteName && localName) {
+    try { await sb.from('profiles').upsert({ id: sbUser.id, name: localName }); } catch (e) { /* non bloquant, retenté plus tard */ }
+  }
   return { profile: { name }, programmes, membres, sessions, pointages };
 }
 
