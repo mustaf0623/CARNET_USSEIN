@@ -1207,17 +1207,14 @@ function attachMemberDetailModal() {
   });
   const addFieldBtn = document.getElementById('extraInfoAddFieldBtn');
   if (addFieldBtn) addFieldBtn.addEventListener('click', () => {
-    const key = (prompt('Nom du nouveau champ (ex : Téléphone, Matricule...)') || '').trim();
-    if (!key) return;
-    if (grid.querySelector(`.extra-info-item[data-key="${CSS.escape(key)}"]`)) { showToast('Ce champ existe déjà'); return; }
     const placeholder = grid.querySelector('div[style*="grid-column"]');
     if (placeholder) placeholder.remove();
     const item = document.createElement('div');
     item.className = 'extra-info-item';
-    item.dataset.key = key;
-    item.innerHTML = `<label>${escapeHtml(key)}</label><div class="extra-info-row"><input type="text" class="extraInfoValueInput"><button type="button" class="extra-info-remove" title="Supprimer ce champ">×</button></div>`;
-    grid.appendChild(item);
-    item.querySelector('input').focus();
+    item.dataset.key = '';
+    item.innerHTML = `<input type="text" class="extraInfoKeyInput" placeholder="Nom du champ" style="font-size:10.5px;font-weight:700;padding:4px 6px;margin-bottom:3px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink-faint);width:100%;box-sizing:border-box;"><div class="extra-info-row"><input type="text" class="extraInfoValueInput" placeholder="Valeur"><button type="button" class="extra-info-remove" title="Supprimer ce champ">×</button></div>`;
+    grid.prepend(item);
+    item.querySelector('.extraInfoKeyInput').focus();
   });
   const saveBtn = document.getElementById('extraInfoSaveBtn');
   if (saveBtn) saveBtn.addEventListener('click', async () => {
@@ -1225,7 +1222,8 @@ function attachMemberDetailModal() {
     if (!m) return;
     const extra = {};
     grid.querySelectorAll('.extra-info-item').forEach(item => {
-      const key = item.dataset.key;
+      const keyInput = item.querySelector('.extraInfoKeyInput');
+      const key = keyInput ? keyInput.value.trim() : item.dataset.key;
       const v = item.querySelector('.extraInfoValueInput').value.trim();
       if (key && v) extra[key] = v;
     });
@@ -1437,18 +1435,24 @@ function attachAdministrationEvents() {
     if (error) { showToast(error.message); return; }
     await loadAccessContext(); showToast('Section renommée'); render();
   })));
-  document.querySelectorAll('.delete-section-btn').forEach(btn => btn.addEventListener('click', () => runOrExplain(async () => {
+  document.querySelectorAll('.delete-section-btn').forEach(btn => btn.addEventListener('click', () => {
     const id = btn.dataset.id;
     const nom = (sbSections.find(s => s.id === id) || {}).nom || 'cette Section';
-    if (!confirm(`Supprimer la Section « ${nom} » ? Tous ses programmes, membres, séances et pointages seront définitivement supprimés. Cette action est irréversible.`)) return;
-    const { error } = await sb.from('sections').delete().eq('id', id);
-    if (error) { showToast(error.message); return; }
-    if (state.activeSectionId === id) state.activeSectionId = null;
-    await loadAccessContext();
-    state.data = await pullFromSupabase();
-    updateSnapshotsFromCurrent();
-    showToast('Section supprimée'); render();
-  })));
+    openConfirm(
+      'Supprimer cette Section ?',
+      `Tous les programmes, membres, séances et pointages de « ${nom} » seront définitivement supprimés. Cette action est irréversible.`,
+      () => runOrExplain(async () => {
+        const { error } = await sb.from('sections').delete().eq('id', id);
+        if (error) { showToast(error.message); return; }
+        if (state.activeSectionId === id) state.activeSectionId = null;
+        await loadAccessContext();
+        state.data = await pullFromSupabase();
+        updateSnapshotsFromCurrent();
+        showToast('Section supprimée'); render();
+      }),
+      'Supprimer'
+    );
+  }));
   document.querySelectorAll('.save-user-btn').forEach(btn => btn.addEventListener('click', () => runOrExplain(async () => {
     const id = btn.dataset.id;
     const section_id = document.querySelector(`.admin-user-section[data-id="${id}"]`).value || null;
