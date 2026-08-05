@@ -26,37 +26,37 @@
 <style>
   :root{
     color-scheme: light;
-    /* ---- pages (contenu principal) : papier clair ---- */
-    --paper:#F2F5EA;
-    --paper-2:#E9EEDD;
-    --card:#FFFFFF;
-    --card-2:#FBFAF1;
-    --ink:#1C2A20;
-    --ink-dim:#4C5B4D;
-    --ink-faint:#84927F;
-    --line:rgba(28,42,32,0.13);
-    --line-strong:rgba(28,42,32,0.24);
-    --shadow:0 16px 38px -20px rgba(20,38,29,0.28);
+    /* ---- pages (contenu principal) : papier registre ---- */
+    --paper:#F1ECDE;
+    --paper-2:#E7DFC9;
+    --card:#FBF8EE;
+    --card-2:#F3EEDC;
+    --ink:#1C2541;
+    --ink-dim:#4A5578;
+    --ink-faint:#8A8F72;
+    --line:rgba(28,37,65,0.13);
+    --line-strong:rgba(28,37,65,0.24);
+    --shadow:0 16px 38px -20px rgba(20,26,45,0.28);
 
-    /* ---- couverture (barre latérale) : cuir foncé ---- */
-    --cover-bg:#122318;
-    --cover-surface:#1C3427;
-    --cover-surface-2:#25412F;
-    --cover-line:rgba(237,241,229,0.12);
-    --cover-line-strong:rgba(237,241,229,0.22);
-    --cover-ink:#EEF2E6;
-    --cover-ink-dim:#AEBCAB;
-    --cover-ink-faint:#7C8C7A;
+    /* ---- couverture (barre latérale) : encre profonde ---- */
+    --cover-bg:#141B33;
+    --cover-surface:#1E2A4D;
+    --cover-surface-2:#283762;
+    --cover-line:rgba(241,236,222,0.12);
+    --cover-line-strong:rgba(241,236,222,0.22);
+    --cover-ink:#F1ECDE;
+    --cover-ink-dim:#B7BBD0;
+    --cover-ink-faint:#7E8199;
 
     /* ---- accents (mêmes teintes sur les deux fonds) ---- */
-    --emerald:#0F9E6E;
-    --emerald-dim:#0B7A55;
-    --emerald-tint:rgba(15,158,110,0.14);
-    --terracotta:#E15F1E;
-    --terracotta-dim:#B54815;
-    --terracotta-tint:rgba(225,95,30,0.14);
-    --gold:#C4890F;
-    --gold-tint:rgba(196,137,15,0.16);
+    --emerald:#4F6B4D;
+    --emerald-dim:#3D5540;
+    --emerald-tint:rgba(79,107,77,0.14);
+    --terracotta:#9C3F2E;
+    --terracotta-dim:#7A2F21;
+    --terracotta-tint:rgba(156,63,46,0.14);
+    --gold:#A9791E;
+    --gold-tint:rgba(169,121,30,0.16);
 
     --radius:14px;
     --radius-sm:8px;
@@ -86,7 +86,7 @@
   /* ===================== SPLASH ===================== */
   #splash{
     position:fixed; inset:0; z-index:999;
-    background:radial-gradient(900px 500px at 20% 0%, #1C3427 0%, var(--cover-bg) 60%);
+    background:radial-gradient(900px 500px at 20% 0%, #1E2A4D 0%, var(--cover-bg) 60%);
     display:flex; align-items:center; justify-content:center; flex-direction:column;
     transition:opacity 0.6s ease, visibility 0.6s;
   }
@@ -116,7 +116,13 @@
   @keyframes splashLoad{ to{ width:100%; } }
 
   /* ===================== App shell ===================== */
-  #app{ display:flex; min-height:100vh; }
+  #app{ display:flex; min-height:100vh; position:relative; }
+  #app::before{
+    /* la reliure : une ombre douce là où la couverture rejoint la page */
+    content:''; position:absolute; top:0; bottom:0; left:236px; width:20px;
+    background:linear-gradient(90deg, rgba(20,27,51,0.14), rgba(20,27,51,0) 75%);
+    pointer-events:none; z-index:6;
+  }
 
   .sidebar{
     width:236px; flex-shrink:0;
@@ -151,8 +157,9 @@
   .tab-btn:hover{ background:var(--cover-surface); color:var(--cover-ink); }
   .tab-btn.active{ background:var(--cover-surface-2); color:var(--cover-ink); }
   .tab-btn.active::before{
-    content:''; position:absolute; left:-18px; top:8px; bottom:8px; width:3px;
-    background:var(--emerald); border-radius:0 4px 4px 0;
+    content:''; position:absolute; right:-19px; top:9px; bottom:9px; width:8px;
+    background:var(--gold); border-radius:0 5px 5px 0; z-index:7;
+    box-shadow:2px 0 4px -1px rgba(0,0,0,0.25);
   }
 
   .sidebar-footer{ margin-top:auto; padding-top:16px; border-top:1px solid var(--cover-line); }
@@ -218,8 +225,14 @@
 
   .card{
     background:var(--card); border:1px solid var(--line);
-    border-radius:var(--radius); padding:20px;
-    box-shadow:var(--shadow);
+    border-radius:4px var(--radius) var(--radius) var(--radius); padding:20px;
+    box-shadow:var(--shadow); position:relative; overflow:hidden;
+  }
+  .card::before{
+    content:''; position:absolute; top:0; left:0; width:0; height:0;
+    border-style:solid; border-width:15px 15px 0 0;
+    border-color:var(--paper-2) transparent transparent transparent;
+    pointer-events:none;
   }
   .stat-card .stat-label{ font-size:11.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.08em; font-weight:700; }
   .stat-card .stat-value{ font-size:34px; margin-top:8px; font-family:'IBM Plex Mono',monospace; font-weight:600; }
@@ -430,7 +443,7 @@
 </head>
 <body>
 <div id="splash">
-  <div class="splash-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M19.8 3.2a2.1 2.1 0 013 3L9.5 19.4l-4 1 1-4L19.8 3.2z" fill="#0F9E6E" stroke="#F2F5EA" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 6l3 3" stroke="#F2F5EA" stroke-width="1.3" stroke-linecap="round"/><path d="M2.6 20c1.1-1.9 2.2-1.9 3.3 0s2.2-1.9 3.3-1.9 2.2 1.9 3.3-1.9" fill="none" stroke="#F2F5EA" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="splash-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M19.8 3.2a2.1 2.1 0 013 3L9.5 19.4l-4 1 1-4L19.8 3.2z" fill="#4F6B4D" stroke="#F1ECDE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 6l3 3" stroke="#F1ECDE" stroke-width="1.3" stroke-linecap="round"/><path d="M2.6 20c1.1-1.9 2.2-1.9 3.3 0s2.2-1.9 3.3-1.9 2.2 1.9 3.3-1.9" fill="none" stroke="#F1ECDE" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
   <div class="splash-title">Carnet</div>
   <div class="splash-sub">Commission Administrative</div>
   <div class="splash-bar"><div class="splash-bar-fill"></div></div>
@@ -452,12 +465,12 @@
    ========================================================= */
 
 const ICONS = {
-  mark: `<svg viewBox="0 0 24 24" fill="none"><path d="M19.8 3.2a2.1 2.1 0 013 3L9.5 19.4l-4 1 1-4L19.8 3.2z" fill="#0F9E6E" stroke="#F2F5EA" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 6l3 3" stroke="#F2F5EA" stroke-width="1.3" stroke-linecap="round"/><path d="M2.6 20c1.1-1.9 2.2-1.9 3.3 0s2.2-1.9 3.3-1.9 2.2 1.9 3.3-1.9" fill="none" stroke="#F2F5EA" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  mark: `<svg viewBox="0 0 24 24" fill="none"><path d="M19.8 3.2a2.1 2.1 0 013 3L9.5 19.4l-4 1 1-4L19.8 3.2z" fill="#4F6B4D" stroke="#F1ECDE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 6l3 3" stroke="#F1ECDE" stroke-width="1.3" stroke-linecap="round"/><path d="M2.6 20c1.1-1.9 2.2-1.9 3.3 0s2.2-1.9 3.3-1.9 2.2 1.9 3.3-1.9" fill="none" stroke="#F1ECDE" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   dashboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>`,
   pointage: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4"/></svg>`,
   membres: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-4 3-6.5 6.5-6.5s6.5 2.5 6.5 6.5"/><circle cx="17.5" cy="8.5" r="2.5"/><path d="M15.5 13.3c2.8.3 5 2.6 5 6.2"/></svg>`,
   rapports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg>`,
-  stamp: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0F9E6E" stroke="#FFFFFF" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5 5.5-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  stamp: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#4F6B4D" stroke="#FFFFFF" stroke-width="1.5"/><path d="M8 12.5l2.5 2.5 5.5-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>`,
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`,
   download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>`,
@@ -1552,6 +1565,11 @@ function renderDashboard() {
         <div class="prog-pct">${programStats(d, filter, yearFilter).tauxParticipation}%</div>
       </div></div>
     </div>`}
+    <div class="card" style="margin-top:16px;">
+      <h3 class="card-title">Tendance de présence</h3>
+      <div class="card-sub">Taux de présence sur les dernières séances, dans l’ordre chronologique</div>
+      <canvas id="trendChart" height="110"></canvas>
+    </div>
   `;
 }
 function statCard(label, value, note, cls) {
@@ -1572,16 +1590,16 @@ const centerTextPlugin = {
     ctx.save();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = "700 26px 'Fraunces', serif";
-    ctx.fillStyle = '#1C2A20';
+    ctx.fillStyle = '#1C2541';
     ctx.fillText(chart.config._centerText.value, cx, cy - 6);
     ctx.font = "600 10px 'Manrope', sans-serif";
-    ctx.fillStyle = '#84927F';
+    ctx.fillStyle = '#8A8F72';
     ctx.fillText(chart.config._centerText.label, cx, cy + 14);
     ctx.restore();
   }
 };
 
-let hfChartInst = null, partChartInst = null;
+let hfChartInst = null, partChartInst = null, trendChartInst = null;
 function attachDashboardEvents() {
   const d = state.data;
   const filterSel = document.getElementById('dashFilter');
@@ -1597,7 +1615,7 @@ function attachDashboardEvents() {
     const goldGrad = ctx.createLinearGradient(0, 0, 0, 220);
     goldGrad.addColorStop(0, '#E0AC2E'); goldGrad.addColorStop(1, '#B87A0C');
     const emeraldGrad = ctx.createLinearGradient(0, 0, 0, 220);
-    emeraldGrad.addColorStop(0, '#2CC28E'); emeraldGrad.addColorStop(1, '#0B7A55');
+    emeraldGrad.addColorStop(0, '#2CC28E'); emeraldGrad.addColorStop(1, '#3D5540');
     hfChartInst = new Chart(hfCanvas, {
       type: 'doughnut',
       data: { labels: ['Hommes', 'Femmes'], datasets: [{ data: [g.nbH, g.nbF], backgroundColor: [goldGrad, emeraldGrad], borderColor: '#FFFFFF', borderWidth: 4, hoverOffset: 14, hoverBorderWidth: 4 }] },
@@ -1606,9 +1624,9 @@ function attachDashboardEvents() {
         animation: { animateRotate: true, animateScale: true, duration: 1000, easing: 'easeOutQuart' },
         interaction: { intersect: true },
         plugins: {
-          legend: { position: 'bottom', labels: { color: '#1C2A20', usePointStyle: true, pointStyle: 'circle', padding: 16, font: { family: 'Manrope', size: 12, weight: 600 } } },
+          legend: { position: 'bottom', labels: { color: '#1C2541', usePointStyle: true, pointStyle: 'circle', padding: 16, font: { family: 'Manrope', size: 12, weight: 600 } } },
           tooltip: {
-            backgroundColor: '#122318', titleColor: '#EEF2E6', bodyColor: '#EEF2E6',
+            backgroundColor: '#141B33', titleColor: '#EEF2E6', bodyColor: '#EEF2E6',
             padding: 10, cornerRadius: 8, displayColors: true, boxPadding: 4,
             callbacks: { label: (ctx) => ' ' + ctx.label + ' : ' + ctx.parsed + (g.total ? ' (' + Math.round(ctx.parsed / g.total * 100) + '%)' : '') }
           }
@@ -1624,7 +1642,7 @@ function attachDashboardEvents() {
     if (partChartInst) partChartInst.destroy();
     const ctx2 = partCanvas.getContext('2d');
     const barGrad = ctx2.createLinearGradient(0, 0, 0, 260);
-    barGrad.addColorStop(0, '#2CC28E'); barGrad.addColorStop(1, '#0B7A55');
+    barGrad.addColorStop(0, '#2CC28E'); barGrad.addColorStop(1, '#3D5540');
     const barHoverGrad = ctx2.createLinearGradient(0, 0, 0, 260);
     barHoverGrad.addColorStop(0, '#3EDBA3'); barHoverGrad.addColorStop(1, '#0E9E68');
     const labels = d.programmes.map(p => p.nom);
@@ -1637,14 +1655,14 @@ function attachDashboardEvents() {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#122318', titleColor: '#EEF2E6', bodyColor: '#EEF2E6',
+            backgroundColor: '#141B33', titleColor: '#EEF2E6', bodyColor: '#EEF2E6',
             padding: 10, cornerRadius: 8,
             callbacks: { label: (ctx) => ' Participation : ' + ctx.parsed.y + '%' }
           }
         },
         scales: {
-          y: { beginAtZero: true, max: 100, ticks: { color: '#4C5B4D', callback: (v) => v + '%' }, grid: { color: 'rgba(28,42,32,0.08)' } },
-          x: { ticks: { color: '#1C2A20', font: { weight: 600 } }, grid: { display: false } }
+          y: { beginAtZero: true, max: 100, ticks: { color: '#4A5578', callback: (v) => v + '%' }, grid: { color: 'rgba(28,42,32,0.08)' } },
+          x: { ticks: { color: '#1C2541', font: { weight: 600 } }, grid: { display: false } }
         }
       },
       plugins: [{
@@ -1656,13 +1674,54 @@ function attachDashboardEvents() {
             if (val === undefined || val === null) return;
             ctx.save();
             ctx.font = "700 11px 'IBM Plex Mono', monospace";
-            ctx.fillStyle = '#0B7A55';
+            ctx.fillStyle = '#3D5540';
             ctx.textAlign = 'center';
             ctx.fillText(val + '%', bar.x, bar.y - 8);
             ctx.restore();
           });
         }
       }]
+    });
+  }
+
+  const trendCanvas = document.getElementById('trendChart');
+  if (trendCanvas) {
+    if (trendChartInst) trendChartInst.destroy();
+    const scopedSessions = (state.dashProgFilter === 'global' ? d.sessions : d.sessions.filter(s => s.programmeId === state.dashProgFilter))
+      .filter(s => state.dashYearFilter === 'toutes' || periodMatches(s.date, state.dashYearFilter))
+      .slice().sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-8);
+    const trendLabels = scopedSessions.map(s => fmtDate(s.date).replace(/\s\d{4}$/, ''));
+    const trendValues = scopedSessions.map(s => sessionStats(d, s.id).tauxPresence);
+    const ctx3 = trendCanvas.getContext('2d');
+    const trendFill = ctx3.createLinearGradient(0, 0, 0, 110);
+    trendFill.addColorStop(0, 'rgba(28,37,65,0.16)'); trendFill.addColorStop(1, 'rgba(28,37,65,0)');
+    trendChartInst = new Chart(trendCanvas, {
+      type: 'line',
+      data: {
+        labels: trendLabels,
+        datasets: [{
+          data: trendValues,
+          borderColor: '#1C2541', borderWidth: 2.2,
+          pointRadius: 3.5, pointBackgroundColor: '#1C2541', pointBorderColor: '#FBF8EE', pointBorderWidth: 2,
+          tension: 0.35, fill: true, backgroundColor: trendFill,
+        }]
+      },
+      options: {
+        animation: { duration: 800, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#141B33', titleColor: '#F1ECDE', bodyColor: '#F1ECDE',
+            padding: 10, cornerRadius: 8,
+            callbacks: { label: (ctx) => ' Présence : ' + ctx.parsed.y + '%' }
+          }
+        },
+        scales: {
+          y: { min: 0, max: 100, ticks: { color: '#8A8F72', callback: v => v + '%', font: { family: 'IBM Plex Mono', size: 10.5 } }, grid: { color: 'rgba(28,37,65,0.08)' } },
+          x: { ticks: { color: '#4A5578', font: { size: 11 } }, grid: { display: false } }
+        }
+      }
     });
   }
 }
