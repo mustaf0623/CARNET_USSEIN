@@ -268,15 +268,31 @@ export function attachAmphitheatreEvents() {
 
   document.querySelectorAll('.amphi-download-btn').forEach(btn => btn.addEventListener('click', async () => {
     const path = btn.dataset.path;
-    if (!path || !AppState.sb) return;
+    if (!path) { showToast('Fichier introuvable pour ce document'); return; }
+    if (!AppState.sb) { showToast('Connexion requise pour télécharger'); return; }
+    // L'onglet doit s'ouvrir de façon SYNCHRONE avec le clic : sur mobile
+    // (Safari, PWA installée en particulier), le navigateur associe la
+    // permission d'ouvrir un nouvel onglet au geste de l'utilisateur, et
+    // cette permission expire dès qu'on passe par un `await`. Si on
+    // attendait l'URL signée avant d'ouvrir l'onglet, l'ouverture serait
+    // silencieusement bloquée — aucune erreur, le bouton semble "ne pas
+    // répondre". On ouvre donc un onglet vide tout de suite, puis on le
+    // redirige une fois l'URL obtenue.
+    const win = window.open('', '_blank');
     try {
       const { data, error } = await AppState.sb.storage.from('amphi-documents').createSignedUrl(path, 60);
       if (error) throw error;
-      const a = document.createElement('a');
-      a.href = data.signedUrl; a.download = btn.dataset.name || '';
-      a.target = '_blank'; a.rel = 'noopener';
-      document.body.appendChild(a); a.click(); a.remove();
+      if (win && !win.closed) {
+        win.location.href = data.signedUrl;
+      } else {
+        // L'onglet a quand même été bloqué (rare) : on retente une
+        // navigation directe dans l'onglet courant.
+        const a = document.createElement('a');
+        a.href = data.signedUrl; a.download = btn.dataset.name || '';
+        document.body.appendChild(a); a.click(); a.remove();
+      }
     } catch (e) {
+      if (win && !win.closed) win.close();
       showToast('Téléchargement impossible : ' + (e && e.message ? e.message : 'réessayez plus tard'));
     }
   }));
