@@ -300,6 +300,19 @@ export function attachAmphitheatreEvents() {
   document.querySelectorAll('.amphi-delete-btn').forEach(btn => btn.addEventListener('click', () => {
     const docItem = (d.amphiDocuments || []).find(a => a.id === btn.dataset.id);
     openConfirm('Supprimer ce document ?', `« ${docItem ? docItem.titre : ''} » sera définitivement supprimé.`, async () => {
+      // Suppression DIRECTE et VÉRIFIÉE côté serveur — contrairement au reste
+      // de l'app (qui met à jour l'état local puis synchronise en arrière-
+      // plan), on ne retire ce document de l'écran QUE si le serveur confirme
+      // la suppression. Sinon la ligne resterait affichée indéfiniment sans
+      // que l'échec ne soit clairement visible (le document semblerait
+      // "supprimé" alors qu'il ne l'est pas réellement en base).
+      if (AppState.sb) {
+        const { error } = await AppState.sb.from('amphi_documents').delete().eq('id', btn.dataset.id);
+        if (error) {
+          showToast('Suppression impossible : ' + error.message);
+          return;
+        }
+      }
       const paths = [docItem?.storagePath, docItem?.correctionStoragePath].filter(Boolean);
       if (paths.length && AppState.sb) { try { await AppState.sb.storage.from('amphi-documents').remove(paths); } catch (e) { /* on continue même si le fichier a déjà disparu */ } }
       d.amphiDocuments = (d.amphiDocuments || []).filter(a => a.id !== btn.dataset.id);
