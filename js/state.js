@@ -55,6 +55,9 @@ export const AppState = {
   // dédiée get_my_membre_info — la table membres lui est inaccessible en
   // lecture directe). null tant que non chargé ou non applicable.
   myMembreInfo: null,
+  // Dépôts de documents Amphithéâtre en attente d'envoi (hors ligne ou
+  // échec réseau) — chaque item peut contenir des objets File bruts.
+  amphiUploadQueue: [],
 
   // ---- Liaison vers le rendu racine (peuplée par main.js) ----
   render: () => {},

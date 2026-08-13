@@ -11,6 +11,7 @@ import { render } from './views/shell.js';
 import { renderAuthScreen } from './auth.js';
 import { loadData } from './db/data.js';
 import { initSyncState, initSupabaseClient, startApp, reconcileSync } from './db/sync.js';
+import { initUploadQueue, processUploadQueue } from './db/upload-queue.js';
 import { initInstallPrompt, registerServiceWorker } from './pwa.js';
 
 // Casse le cycle d'import : state.js est un module bas niveau qui ne peut pas
@@ -28,6 +29,10 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
   // soit le chemin suivi ensuite — sinon les suppressions faites hors ligne
   // ne peuvent plus être détectées lors de la prochaine synchro.
   await initSyncState(!!localData);
+  // Recharge les dépôts de documents laissés en attente lors d'une session
+  // précédente (app fermée hors ligne avant reconnexion) — indépendant des
+  // données locales classiques, donc chargé systématiquement.
+  await initUploadQueue();
 
   if (supabaseConfigured() && window.supabase) {
     const syncBtnEl = document.getElementById('syncBtn');
@@ -42,6 +47,7 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
           const regained = !AppState.sbUser && newUser;
           AppState.sbUser = newUser;
           if (regained && AppState.data) reconcileSync();
+          if (regained) processUploadQueue();
         });
         // En cas de perte de réseau au moment précis du chargement, on retente
         // dès que la connexion revient plutôt que d'attendre indéfiniment.
@@ -52,6 +58,9 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
             const newUser = session ? session.user : null;
             if (newUser && !AppState.sbUser) { AppState.sbUser = newUser; if (AppState.data) reconcileSync(); }
           } catch (e) { /* réessaiera au prochain événement online */ }
+          // Le retour en ligne suffit à lui seul à retenter la file d'attente,
+          // même si la session était déjà valide (donc pas de "regained" ci-dessus).
+          processUploadQueue();
         });
       } catch (e) { AppState.sb = null; }
     }
@@ -76,6 +85,13 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
   } else {
     await startApp(localData);
   }
+
+  // Des dépôts de documents ont pu rester en attente d'une session
+  // précédente (app fermée hors ligne avant reconnexion) : on retente tout
+  // de suite si on est déjà en ligne et connecté, sans attendre un
+  // événement 'online' qui ne se déclenchera pas si la connexion était déjà
+  // là dès l'ouverture de l'app.
+  if (AppState.sb && AppState.sbUser) processUploadQueue();
 
   initInstallPrompt();
   registerServiceWorker();
