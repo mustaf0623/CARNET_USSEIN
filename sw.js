@@ -1,7 +1,7 @@
 // sw.js — Carnet
 // Stratégie : Stale-While-Revalidate pour les ressources de l'app,
 // + cache des assets externes utilisés (CDN, polices) et fallback navigation hors-ligne.
-const CACHE_NAME = 'carnet-v11';
+const CACHE_NAME = 'carnet-v12';
 const CORE_ASSETS = [
   './',
   './index.html',
