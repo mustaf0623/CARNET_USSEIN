@@ -119,7 +119,7 @@ export function renderAmphitheatre() {
   const filtered = q ? docs.filter(a => norm(a.reference).includes(q) || norm(a.titre).includes(q)) : docs;
   const canManage = AppState.sbProfile?.role === 'super_admin' || AppState.sbProfile?.role === 'ca';
 
-  return `<div class="page-head"><div><div class="eyebrow">Amphithéâtre</div><h1 class="page-title">${escapeHtml(ufr)} — ${escapeHtml(filiere)}</h1><p class="page-sub">Cours, TD (avec correction si disponible), TP et liens partagés par les membres de cette Filière.</p></div></div>
+  return `<div class="page-head"><div><div class="eyebrow">Amphithéâtre</div><h1 class="page-title">${escapeHtml(ufr)} — ${escapeHtml(filiere)}</h1><p class="page-sub">Cours, TD, Devoir, Examens (avec correction si disponible), TP et liens partagés par les membres de cette Filière.</p></div></div>
     ${renderUploadQueueSection()}
     ${graceWarning}
     ${!isRestricted ? renderAmphiStats(d) : ''}
