@@ -78,7 +78,7 @@ export async function pullFromSupabase() {
   const sessions = (sessRes.data || []).map(r => ({ id: r.id, programmeId: r.programme_id, date: r.date, label: r.label }));
   const pointages = (ptRes.data || []).map(r => ({ id: r.id, sessionId: r.session_id, membreId: r.membre_id, statut: r.statut }));
   const amphiDocuments = (amphiRes.data || []).map(r => ({
-    id: r.id, ufr: r.ufr, filiere: r.filiere, type: r.type, titre: r.titre, reference: r.reference || '',
+    id: r.id, ufr: r.ufr, filiere: r.filiere, niveau: r.niveau || '', type: r.type, titre: r.titre, reference: r.reference || '',
     fileName: r.file_name || '', storagePath: r.storage_path || '',
     correctionFileName: r.correction_file_name || '', correctionStoragePath: r.correction_storage_path || '',
     lienUrl: r.lien_url || '', uploaderName: r.uploader_name || '', uploaderUserId: r.uploader_user_id || '',
@@ -162,7 +162,7 @@ export async function pushToSupabase() {
     snapshotMaps.sessions = await syncTable('sessions', d.sessions, s => ({ id: s.id, programme_id: s.programmeId, date: s.date, label: s.label, section_id }), snapshotMaps.sessions);
     snapshotMaps.pointages = await syncTable('pointages', d.pointages, p => ({ id: p.id, session_id: p.sessionId, membre_id: p.membreId, statut: p.statut, section_id }), snapshotMaps.pointages);
     snapshotMaps.amphiDocuments = await syncTable('amphi_documents', d.amphiDocuments || [], a => ({
-      id: a.id, section_id, ufr: a.ufr, filiere: a.filiere, type: a.type, titre: a.titre, reference: a.reference || '',
+      id: a.id, section_id, ufr: a.ufr, filiere: a.filiere, niveau: a.niveau || '', type: a.type, titre: a.titre, reference: a.reference || '',
       file_name: a.fileName || null, storage_path: a.storagePath || null,
       correction_file_name: a.correctionFileName || null, correction_storage_path: a.correctionStoragePath || null,
       lien_url: a.lienUrl || null, uploader_name: a.uploaderName || '', uploader_user_id: a.uploaderUserId || null,

@@ -67,7 +67,7 @@ async function performUpload(item) {
     }
   }
   const newDoc = {
-    id: item.id, ufr: item.ufr, filiere: item.filiere, type: item.type, titre: item.titre, reference: item.reference,
+    id: item.id, ufr: item.ufr, filiere: item.filiere, niveau: item.niveau || '', type: item.type, titre: item.titre, reference: item.reference,
     fileName, storagePath, correctionFileName, correctionStoragePath, lienUrl,
     uploaderName: item.uploaderName, uploaderUserId: item.uploaderUserId,
     createdAt: item.createdAt,
@@ -76,7 +76,7 @@ async function performUpload(item) {
   // savoir immédiatement si le serveur a accepté, pas juste espérer qu'une
   // synchronisation en arrière-plan finisse par passer.
   const { error } = await sb.from('amphi_documents').insert({
-    id: newDoc.id, section_id: item.sectionId, ufr: newDoc.ufr, filiere: newDoc.filiere, type: newDoc.type,
+    id: newDoc.id, section_id: item.sectionId, ufr: newDoc.ufr, filiere: newDoc.filiere, niveau: newDoc.niveau || '', type: newDoc.type,
     titre: newDoc.titre, reference: newDoc.reference || '',
     file_name: newDoc.fileName || null, storage_path: newDoc.storagePath || null,
     correction_file_name: newDoc.correctionFileName || null, correction_storage_path: newDoc.correctionStoragePath || null,
