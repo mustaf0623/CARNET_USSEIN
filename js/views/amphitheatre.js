@@ -1,27 +1,36 @@
 // views/amphitheatre.js — Onglet Amphithéâtre : dépôt et consultation de
 // documents de cours (Supabase Storage), classés par UFR/Filière.
 import { AppState, showToast, openConfirm } from '../state.js';
-import { AMPHI_TYPE_LABEL, AMPHI_TYPES_WITH_CORRECTION, escapeHtml, uid, fmtDate, todayISO } from '../config.js';
+import { AMPHI_TYPE_LABEL, AMPHI_TYPES_WITH_CORRECTION, NIVEAU_LABEL, escapeHtml, uid, fmtDate, todayISO } from '../config.js';
 import { saveData } from '../db/data.js';
-import { getMemberUfrFiliere, amphiUfrFiliereOptions, isSortant, hasSortantAccessExpired, daysSinceSortant, SORTANT_GRACE_DAYS } from '../domain/membres.js';
+import { getMemberUfrFiliere, amphiUfrFiliereOptions, getNiveauCode, NIVEAU_CODES, isSortant, hasSortantAccessExpired, daysSinceSortant, SORTANT_GRACE_DAYS } from '../domain/membres.js';
 import { emptyRow } from '../components/ui.js';
 import { submitOrQueueAmphiDocument, retryQueueItem, removeQueueItem } from '../db/upload-queue.js';
 
-// Compte les documents par UFR puis par Filière (pour la vue statistique
-// réservée à CA/super-admin). Se base sur TOUS les documents de la Section,
-// indépendamment de l'UFR/Filière actuellement affichée.
+// Compte les documents par UFR, Filière, puis Niveau (pour la vue
+// statistique réservée à CA/super-admin). Se base sur TOUS les documents de
+// la Section, indépendamment de l'UFR/Filière actuellement affichée.
 function computeAmphiStats(d) {
-  const byUfr = new Map(); // ufr -> { total, filieres: Map(filiere -> count) }
+  const byUfr = new Map(); // ufr -> { total, filieres: Map(filiere -> { total, niveaux: Map }) }
   (d.amphiDocuments || []).forEach(doc => {
     if (!byUfr.has(doc.ufr)) byUfr.set(doc.ufr, { total: 0, filieres: new Map() });
-    const entry = byUfr.get(doc.ufr);
-    entry.total++;
-    entry.filieres.set(doc.filiere, (entry.filieres.get(doc.filiere) || 0) + 1);
+    const ufrEntry = byUfr.get(doc.ufr);
+    ufrEntry.total++;
+    if (!ufrEntry.filieres.has(doc.filiere)) ufrEntry.filieres.set(doc.filiere, { total: 0, niveaux: new Map() });
+    const filiereEntry = ufrEntry.filieres.get(doc.filiere);
+    filiereEntry.total++;
+    const niveauKey = doc.niveau || '';
+    filiereEntry.niveaux.set(niveauKey, (filiereEntry.niveaux.get(niveauKey) || 0) + 1);
   });
   return Array.from(byUfr.entries())
     .map(([ufr, { total, filieres }]) => ({
       ufr, total,
-      filieres: Array.from(filieres.entries()).map(([filiere, count]) => ({ filiere, count })).sort((a, b) => a.filiere.localeCompare(b.filiere)),
+      filieres: Array.from(filieres.entries())
+        .map(([filiere, { total: fTotal, niveaux }]) => ({
+          filiere, total: fTotal,
+          niveaux: Array.from(niveaux.entries()).map(([niveau, count]) => ({ niveau, count })).sort((a, b) => (a.niveau || 'zzz').localeCompare(b.niveau || 'zzz')),
+        }))
+        .sort((a, b) => a.filiere.localeCompare(b.filiere)),
     }))
     .sort((a, b) => a.ufr.localeCompare(b.ufr));
 }
@@ -38,8 +47,11 @@ function renderAmphiStats(d) {
           <div class="prog-name">${escapeHtml(u.ufr)}</div>
           <span class="pill" style="background:var(--emerald-tint);border-color:var(--emerald);color:var(--emerald-dim);font-weight:700;">${u.total} document${u.total > 1 ? 's' : ''}</span>
         </div>
-        <div style="padding:2px 4px 10px 16px;display:flex;flex-wrap:wrap;gap:6px;">
-          ${u.filieres.map(f => `<span class="pill">${escapeHtml(f.filiere)} · ${f.count}</span>`).join('')}
+        <div style="padding:2px 4px 12px 16px;display:flex;flex-direction:column;gap:6px;">
+          ${u.filieres.map(f => `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span class="pill" style="font-weight:700;">${escapeHtml(f.filiere)} · ${f.total}</span>
+            ${f.niveaux.map(n => `<span class="pill" style="background:var(--card-2);font-size:10.5px;">${escapeHtml(NIVEAU_LABEL[n.niveau] || n.niveau)} · ${n.count}</span>`).join('')}
+          </div>`).join('')}
         </div>
       `).join('') : emptyRow('Aucun document déposé pour l’instant, dans aucune UFR.')}
     </div>
@@ -56,7 +68,7 @@ function renderUploadQueueSection() {
       ${mine.map(item => `<div class="ledger-row" style="flex-wrap:wrap;gap:8px;">
         <div style="flex:1;min-width:160px;">
           <div class="prog-name">${escapeHtml(item.titre)} <span class="pill">${AMPHI_TYPE_LABEL[item.type] || item.type}</span></div>
-          <div style="font-size:11.5px;color:var(--ink-faint);">${escapeHtml(item.ufr)} — ${escapeHtml(item.filiere)}${item.status === 'error' ? ' · échec : ' + escapeHtml(item.errorMessage || 'réessayez plus tard') : ''}</div>
+          <div style="font-size:11.5px;color:var(--ink-faint);">${escapeHtml(item.ufr)} — ${escapeHtml(item.filiere)}${item.niveau ? ' — ' + escapeHtml(item.niveau) : ''}${item.status === 'error' ? ' · échec : ' + escapeHtml(item.errorMessage || 'réessayez plus tard') : ''}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           ${item.status === 'uploading'
@@ -84,9 +96,15 @@ export function renderAmphitheatre() {
 
   let ufr = AppState.amphiUfr || '';
   let filiere = AppState.amphiFiliere || '';
+  let detectedNiveau = '';
   if (isRestricted) {
     const info = getMemberUfrFiliere(AppState.myMembreInfo);
     ufr = info.ufr; filiere = info.filiere;
+    detectedNiveau = getNiveauCode(AppState.myMembreInfo);
+    // Un compte restreint démarre sur son propre niveau détecté, mais peut
+    // ensuite naviguer librement vers d'autres niveaux de sa Filière (ex.
+    // consulter les documents de l'année précédente).
+    if (AppState.amphiNiveau === 'tous' && detectedNiveau && !AppState.amphiNiveauTouched) AppState.amphiNiveau = detectedNiveau;
   }
   const options = amphiUfrFiliereOptions(d);
   const graceWarning = (isRestricted && AppState.myMembreInfo && isSortant(AppState.myMembreInfo) && !hasSortantAccessExpired(AppState.myMembreInfo))
@@ -103,6 +121,13 @@ export function renderAmphitheatre() {
       </select>
     </div>` : '';
 
+  const niveauSelector = (ufr && filiere) ? `
+    <div class="chip-select" style="margin-bottom:16px;">
+      <button type="button" class="chip amphi-niveau-chip ${AppState.amphiNiveau === 'tous' ? 'on' : ''}" data-niveau="tous">Tous niveaux</button>
+      <button type="button" class="chip amphi-niveau-chip ${AppState.amphiNiveau === '' ? 'on' : ''}" data-niveau="">Général</button>
+      ${NIVEAU_CODES.map(code => `<button type="button" class="chip amphi-niveau-chip ${AppState.amphiNiveau === code ? 'on' : ''}" data-niveau="${code}">${code}${code === detectedNiveau ? ' ★' : ''}</button>`).join('')}
+    </div>` : '';
+
   if (!ufr || !filiere) {
     return `<div class="page-head"><div><div class="eyebrow">Amphithéâtre</div><h1 class="page-title">Documents</h1><p class="page-sub">Cours, TD (avec correction), TP et liens, classés par UFR et Filière.</p></div></div>
       ${renderUploadQueueSection()}
@@ -113,17 +138,18 @@ export function renderAmphitheatre() {
     `;
   }
 
-  const docs = (d.amphiDocuments || []).filter(a => a.ufr === ufr && a.filiere === filiere);
+  const docs = (d.amphiDocuments || []).filter(a => a.ufr === ufr && a.filiere === filiere && (AppState.amphiNiveau === 'tous' || (a.niveau || '') === AppState.amphiNiveau));
   const q = (AppState.amphiSearch || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const filtered = q ? docs.filter(a => norm(a.reference).includes(q) || norm(a.titre).includes(q)) : docs;
   const canManage = AppState.sbProfile?.role === 'super_admin' || AppState.sbProfile?.role === 'ca';
 
-  return `<div class="page-head"><div><div class="eyebrow">Amphithéâtre</div><h1 class="page-title">${escapeHtml(ufr)} — ${escapeHtml(filiere)}</h1><p class="page-sub">Cours, TD, Devoir, Examens (avec correction si disponible), TP et liens partagés par les membres de cette Filière.</p></div></div>
+  return `<div class="page-head"><div><div class="eyebrow">Amphithéâtre</div><h1 class="page-title">${escapeHtml(ufr)} — ${escapeHtml(filiere)}</h1><p class="page-sub">Cours, TD (avec correction si disponible), TP et liens partagés par les membres de cette Filière.</p></div></div>
     ${renderUploadQueueSection()}
     ${graceWarning}
     ${!isRestricted ? renderAmphiStats(d) : ''}
     ${scopeSelector}
+    ${niveauSelector}
 
     <div class="card">
       <h3 class="card-title">Déposer un document</h3>
@@ -136,6 +162,10 @@ export function renderAmphitheatre() {
           <option value="examen_normale">Examen (session normale)</option>
           <option value="examen_rattrapage">Examen (session rattrapage)</option>
           <option value="lien">Lien</option>
+        </select>
+        <select id="amphiNewNiveau">
+          <option value="">Général (tous niveaux)</option>
+          ${NIVEAU_CODES.map(code => `<option value="${code}" ${code === detectedNiveau ? 'selected' : ''}>${code}</option>`).join('')}
         </select>
         <input type="text" id="amphiNewTitre" placeholder="Titre" style="flex:1;min-width:160px;">
         <input type="text" id="amphiNewReference" placeholder="Référence (pour la recherche)" style="min-width:160px;">
@@ -160,7 +190,7 @@ export function renderAmphitheatre() {
       <div class="ledger">
         ${filtered.length ? filtered.map(a => `<div class="ledger-row" style="flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:160px;">
-            <div class="prog-name">${escapeHtml(a.titre)} <span class="pill">${AMPHI_TYPE_LABEL[a.type] || a.type}</span></div>
+            <div class="prog-name">${escapeHtml(a.titre)} <span class="pill">${AMPHI_TYPE_LABEL[a.type] || a.type}</span>${a.niveau ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);">${escapeHtml(a.niveau)}</span>` : ''}</div>
             <div style="font-size:11.5px;color:var(--ink-faint);">${a.reference ? 'Réf. ' + escapeHtml(a.reference) + ' · ' : ''}déposé par ${escapeHtml(a.uploaderName || 'inconnu')} · ${fmtDate((a.createdAt || '').slice(0, 10) || todayISO())}</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -184,6 +214,12 @@ export function attachAmphitheatreEvents() {
     AppState.amphiUfr = ufr || ''; AppState.amphiFiliere = filiere || '';
     AppState.render();
   });
+
+  document.querySelectorAll('.amphi-niveau-chip').forEach(chip => chip.addEventListener('click', () => {
+    AppState.amphiNiveau = chip.dataset.niveau;
+    AppState.amphiNiveauTouched = true;
+    AppState.render();
+  }));
 
   const typeSel = document.getElementById('amphiNewType');
   const toggleFields = () => {
@@ -217,6 +253,7 @@ export function attachAmphitheatreEvents() {
     }
     if (!ufr || !filiere) { showToast('UFR/Filière introuvable'); return; }
     const type = document.getElementById('amphiNewType').value;
+    const niveau = document.getElementById('amphiNewNiveau')?.value || '';
     const titre = document.getElementById('amphiNewTitre').value.trim();
     const reference = document.getElementById('amphiNewReference').value.trim();
     if (!titre) { showToast('Indiquez un titre'); return; }
@@ -249,7 +286,7 @@ export function attachAmphitheatreEvents() {
     }
 
     const item = {
-      id: uid(), ufr, filiere, type, titre, reference,
+      id: uid(), ufr, filiere, niveau, type, titre, reference,
       file, correctionFile, lienUrl,
       uploaderName, uploaderUserId: AppState.sbUser.id,
       sectionId: AppState.activeSectionId,
