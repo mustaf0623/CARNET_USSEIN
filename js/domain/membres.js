@@ -63,6 +63,26 @@ export function isSortant(membre) {
   return normKey(getNiveauEtude(membre)).includes('sortant');
 }
 
+/* ================= Niveau d'étude (L1 → M2) ================= */
+// Même colonne importée que pour la détection des Sortants ("niveau
+// d'étude"), mais normalisée vers l'un des 5 codes standards — tolère les
+// variantes courantes ("Licence 1", "L1", "1ère année"...). Sert à organiser
+// les documents de l'Amphithéâtre par niveau, en plus de l'UFR/Filière.
+export const NIVEAU_CODES = ['L1', 'L2', 'L3', 'M1', 'M2'];
+const NIVEAU_PATTERNS = [
+  { code: 'L1', re: /\bl\s*1\b|licence\s*1|1(ere|ère)?\s*annee.*licence|licence.*1(ere|ère)?\s*annee/ },
+  { code: 'L2', re: /\bl\s*2\b|licence\s*2|2(eme|ème)?\s*annee.*licence|licence.*2(eme|ème)?\s*annee/ },
+  { code: 'L3', re: /\bl\s*3\b|licence\s*3|3(eme|ème)?\s*annee.*licence|licence.*3(eme|ème)?\s*annee/ },
+  { code: 'M1', re: /\bm\s*1\b|master\s*1|1(ere|ère)?\s*annee.*master|master.*1(ere|ère)?\s*annee/ },
+  { code: 'M2', re: /\bm\s*2\b|master\s*2|2(eme|ème)?\s*annee.*master|master.*2(eme|ème)?\s*annee/ },
+];
+export function getNiveauCode(membre) {
+  const raw = normKey(getNiveauEtude(membre));
+  if (!raw) return '';
+  const found = NIVEAU_PATTERNS.find(p => p.re.test(raw));
+  return found ? found.code : '';
+}
+
 // Nombre de jours écoulés depuis que le membre est devenu Sortant, ou null
 // si l'information n'est pas connue (jamais marqué Sortant dans l'app).
 export function daysSinceSortant(membre) {
