@@ -17,6 +17,8 @@ export const AppState = {
   absenceThreshold: 3,
   amphiUfr: '',
   amphiFiliere: '',
+  amphiNiveau: 'tous',
+  amphiNiveauTouched: false,
   amphiSearch: '',
   dashProgFilter: 'global',
   dashYearFilter: 'toutes',
