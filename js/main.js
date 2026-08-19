@@ -10,7 +10,7 @@ import { supabaseConfigured } from './config.js';
 import { render } from './views/shell.js';
 import { renderAuthScreen } from './auth.js';
 import { loadData } from './db/data.js';
-import { initSyncState, initSupabaseClient, startApp, reconcileSync } from './db/sync.js';
+import { initSyncState, initSupabaseClient, startApp, reconcileSync, loadCachedAccessContext } from './db/sync.js';
 import { initUploadQueue, processUploadQueue } from './db/upload-queue.js';
 import { initInstallPrompt, registerServiceWorker } from './pwa.js';
 
@@ -27,11 +27,15 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
   // La liste des actions locales pas encore envoyées (snapshots de la
   // dernière synchro connue) doit être restaurée dès maintenant, quel que
   // soit le chemin suivi ensuite — sinon les suppressions faites hors ligne
-  // ne peuvent plus être détectées lors de la prochaine synchro.
+  // ne peuvent plus être détectées lors de la prochaine synchro. Couvre
+  // aussi désormais les observations, intégrées au même modèle de données.
   await initSyncState(!!localData);
   // Recharge les dépôts de documents laissés en attente lors d'une session
-  // précédente (app fermée hors ligne avant reconnexion) — indépendant des
-  // données locales classiques, donc chargé systématiquement.
+  // précédente (app fermée hors ligne avant reconnexion) — c'est le seul
+  // cas qui a besoin d'une file dédiée, car il s'agit de vrais fichiers
+  // binaires. Les observations, elles, voyagent avec le reste des données
+  // via initSyncState/reconcileSync ci-dessus, comme les membres ou le
+  // pointage.
   await initUploadQueue();
 
   if (supabaseConfigured() && window.supabase) {
@@ -58,8 +62,10 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
             const newUser = session ? session.user : null;
             if (newUser && !AppState.sbUser) { AppState.sbUser = newUser; if (AppState.data) reconcileSync(); }
           } catch (e) { /* réessaiera au prochain événement online */ }
-          // Le retour en ligne suffit à lui seul à retenter la file d'attente,
-          // même si la session était déjà valide (donc pas de "regained" ci-dessus).
+          // Le retour en ligne suffit à lui seul à retenter la file d'attente
+          // des documents, même si la session était déjà valide (donc pas de
+          // "regained" ci-dessus). Les observations, elles, seront poussées
+          // par le prochain appel à reconcileSync/pushToSupabase.
           processUploadQueue();
         });
       } catch (e) { AppState.sb = null; }
@@ -74,6 +80,13 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
     // immédiatement, connecté ou non — jamais bloqué par un problème de
     // session ou de réseau. La synchronisation se fait en tâche de fond.
     AppState.data = localData;
+    // Le rôle, les Sections et la Section active ne sont pas non plus
+    // laissés vides le temps que le réseau confirme quoi que ce soit :
+    // on restaure le dernier contexte connu pour que ce tout premier
+    // rendu affiche déjà les bons onglets (ex. Administration pour un
+    // super-admin) même hors ligne. reconcileSync() ci-dessous corrigera
+    // ces valeurs dès qu'une connexion réussit.
+    if (AppState.sb && AppState.sbUser) await loadCachedAccessContext();
     render();
     // Important : on NE marque PAS ces données comme déjà synchronisées ici.
     // reconcileSync() pousse d'abord ces données, puis récupère l'état serveur.

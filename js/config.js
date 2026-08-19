@@ -14,6 +14,7 @@ export const ICONS = {
   drive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3l8 0 5 9-4 7-9 0-5-8z"/><path d="M8 3l-5 9M16 3l5 9M4.5 13.5h15"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1-2.2 2.2-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6v.2h-3.2v-.2a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1-2.2-2.2.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.6-1H4.6v-3.2h.2a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9L6 7.8l2.2-2.2.1.1a1.7 1.7 0 001.9.3 1.7 1.7 0 001-1.6v-.2h3.2v.2a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.3l.1-.1 2.2 2.2-.1.1a1.7 1.7 0 00-.3 1.9 1.7 1.7 0 001.6 1h.2V14h-.2a1.7 1.7 0 00-1.6 1z"/></svg>`,
   amphi: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 8l10-5 10 5-10 5-10-5z"/><path d="M6 10.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-5.5"/><path d="M22 8v6"/></svg>`,
+  observations: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>`,
 };
 
 export const AMPHI_TYPE_LABEL = {
@@ -60,3 +61,12 @@ export function monthLabel(ym) { const [y, m] = ym.split('-'); return MOIS_FR[pa
 export const SUPABASE_URL = 'https://jqbnwdcxewoflwflqqfg.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_J9V41kIvkiYH8VFu0n81KQ_ne6tvzvk';
 export function supabaseConfigured() { return !SUPABASE_URL.startsWith('VOTRE_') && !SUPABASE_ANON_KEY.startsWith('VOTRE_'); }
+
+// Heuristique partagée pour distinguer un échec réseau (à mettre en file
+// d'attente pour retenter plus tard) d'un échec "métier" (permission
+// refusée, validation...) qu'il ne sert à rien de retenter automatiquement.
+export function isNetworkError(e) {
+  if (!navigator.onLine) return true;
+  const msg = ((e && e.message) || '').toLowerCase();
+  return msg.includes('failed to fetch') || msg.includes('network') || msg.includes('load failed') || msg.includes('econnrefused');
+}

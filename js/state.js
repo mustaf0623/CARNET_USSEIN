@@ -66,7 +66,7 @@ export const AppState = {
 };
 
 export function emptyData() {
-  return { profile: { name: '' }, programmes: [], membres: [], sessions: [], pointages: [], amphiDocuments: [] };
+  return { profile: { name: '' }, programmes: [], membres: [], sessions: [], pointages: [], amphiDocuments: [], observations: [] };
 }
 
 export function showToast(msg, icon) {
