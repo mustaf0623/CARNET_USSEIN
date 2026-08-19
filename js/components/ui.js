@@ -10,6 +10,28 @@ export function statCard(label, value, note, cls) {
   </div>`;
 }
 
+// Variante pour deux valeurs à afficher côte à côte dans la même carte
+// (ex. Hommes / Femmes) : chiffres alignés sur une même ligne de base,
+// chacun avec son propre libellé, séparés par un fin trait vertical —
+// plus lisible que la fusion en texte brut "12 / 8".
+export function statCardSplit(label, leftLabel, leftValue, rightLabel, rightValue, note, cls) {
+  return `<div class="card stat-card ${cls}">
+    <div class="stat-label">${label}</div>
+    <div class="stat-value-split">
+      <div class="stat-value-split-item">
+        <span class="stat-value-split-num">${leftValue}</span>
+        <span class="stat-value-split-label">${leftLabel}</span>
+      </div>
+      <div class="stat-value-split-divider"></div>
+      <div class="stat-value-split-item">
+        <span class="stat-value-split-num">${rightValue}</span>
+        <span class="stat-value-split-label">${rightLabel}</span>
+      </div>
+    </div>
+    <div class="stat-note">${note}</div>
+  </div>`;
+}
+
 export function emptyRow(msg) { return `<div class="ledger-row" style="color:var(--ink-faint);font-size:13px;">${msg}</div>`; }
 
 export function sessionOptionsByYear(sessions, selectedId) {
