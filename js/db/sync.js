@@ -11,10 +11,11 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, supabaseConfigured } from '../config.j
 import { idbGet, idbSet, idbDelete } from './indexeddb.js';
 
 const SYNC_STATE_KEY = 'carnet-sync-state';
+const ACCESS_CONTEXT_KEY = 'carnet-access-context';
 const SYNC_STATE_BACKUP_KEY = 'carnet-sync-state-backup';
 export const LOCAL_BACKUP_KEY = 'carnet-data-backup';
 
-const snapshotMaps = { programmes: new Map(), membres: new Map(), sessions: new Map(), pointages: new Map(), amphiDocuments: new Map() };
+const snapshotMaps = { programmes: new Map(), membres: new Map(), sessions: new Map(), pointages: new Map(), amphiDocuments: new Map(), observations: new Map() };
 let syncState = { pending: false, snapshots: null };
 
 function serialiseSnapshots() {
@@ -50,6 +51,7 @@ export function updateSnapshotsFromCurrent() {
   snapshotMaps.sessions = new Map(d.sessions.map(r => [r.id, JSON.stringify(r)]));
   snapshotMaps.pointages = new Map(d.pointages.map(r => [r.id, JSON.stringify(r)]));
   snapshotMaps.amphiDocuments = new Map((d.amphiDocuments || []).map(r => [r.id, JSON.stringify(r)]));
+  snapshotMaps.observations = new Map((d.observations || []).map(r => [r.id, JSON.stringify(r)]));
 }
 export function resetSnapshots() {
   snapshotMaps.programmes = new Map();
@@ -57,6 +59,7 @@ export function resetSnapshots() {
   snapshotMaps.sessions = new Map();
   snapshotMaps.pointages = new Map();
   snapshotMaps.amphiDocuments = new Map();
+  snapshotMaps.observations = new Map();
 }
 
 export async function pullFromSupabase() {
@@ -64,13 +67,14 @@ export async function pullFromSupabase() {
   const sectionId = AppState.activeSectionId;
   if (!sectionId) return emptyData();
   const scoped = table => sb.from(table).select('*').eq('section_id', sectionId);
-  const [progRes, memRes, sessRes, ptRes, profRes, amphiRes] = await Promise.all([
+  const [progRes, memRes, sessRes, ptRes, profRes, amphiRes, obsRes] = await Promise.all([
     scoped('programmes'),
     scoped('membres'),
     scoped('sessions'),
     scoped('pointages'),
     sb.from('profiles').select('*').eq('id', sbUser.id).maybeSingle(),
     scoped('amphi_documents'),
+    scoped('observations'),
   ]);
   if (progRes.error) throw progRes.error;
   const programmes = (progRes.data || []).map(r => ({ id: r.id, nom: r.nom }));
@@ -84,6 +88,10 @@ export async function pullFromSupabase() {
     lienUrl: r.lien_url || '', uploaderName: r.uploader_name || '', uploaderUserId: r.uploader_user_id || '',
     createdAt: r.created_at,
   }));
+  const observations = (obsRes.data || []).map(r => ({
+    id: r.id, authorUserId: r.author_user_id || '', authorName: r.author_name || '', authorRole: r.author_role || '',
+    content: r.content, createdAt: r.created_at, updatedAt: r.updated_at,
+  }));
   // Le nom du signataire ne doit JAMAIS être effacé par un pull : si le
   // serveur ne renvoie rien, on garde le nom déjà connu localement — et on
   // en profite pour tenter de réparer l'enregistrement côté serveur.
@@ -93,7 +101,7 @@ export async function pullFromSupabase() {
   if (!remoteName && localName) {
     try { await sb.from('profiles').upsert({ id: sbUser.id, name: localName }); } catch (e) { /* non bloquant, retenté plus tard */ }
   }
-  return { profile: { name }, programmes, membres, sessions, pointages, amphiDocuments };
+  return { profile: { name }, programmes, membres, sessions, pointages, amphiDocuments, observations };
 }
 
 export async function loadAccessContext() {
@@ -110,8 +118,16 @@ export async function loadAccessContext() {
     if (usersError) throw usersError;
     AppState.sbUsers = users || [];
   }
-  if (AppState.sbProfile.role === 'super_admin') AppState.activeSectionId = AppState.activeSectionId || AppState.sbSections[0]?.id || null;
-  else AppState.activeSectionId = AppState.sbProfile.sectionId;
+  // "pf" a accès à toutes les Sections, comme un super-admin, mais en
+  // lecture seule (imposé côté RLS) — même logique de Section active :
+  // celle déjà choisie, sinon celle de son profil, sinon la première
+  // disponible. Sans ce traitement particulier, un compte "pf" sans
+  // section_id renseigné se retrouverait bloqué sur l'écran "en attente".
+  if (AppState.sbProfile.role === 'super_admin' || AppState.sbProfile.role === 'pf') {
+    AppState.activeSectionId = AppState.activeSectionId || AppState.sbProfile.sectionId || AppState.sbSections[0]?.id || null;
+  } else {
+    AppState.activeSectionId = AppState.sbProfile.sectionId;
+  }
 
   // La table `membres` est inaccessible en lecture directe pour le rôle
   // "utilisateur" (RLS réservée à CA/super-admin) : le seul canal autorisé
@@ -127,6 +143,48 @@ export async function loadAccessContext() {
     }
   } else {
     AppState.myMembreInfo = null;
+  }
+
+  // Contrairement à AppState.data (programmes/membres/pointages...), le
+  // contexte d'accès (rôle, Sections, Section active, membre lié) n'était
+  // jusqu'ici JAMAIS mis en cache localement — uniquement re-dérivé d'un
+  // appel réseau à chaque démarrage. Résultat : un redémarrage hors ligne
+  // (fréquent sur mobile, l'OS pouvant tuer l'app en arrière-plan) faisait
+  // repartir sbProfile à null le temps que cet appel échoue, cachant à tort
+  // des éléments d'interface propres au rôle (ex. l'onglet Administration,
+  // réservé au strict test role==='super_admin') alors même que les
+  // données de la Section, elles, restaient disponibles hors ligne.
+  await persistAccessContext();
+}
+
+async function persistAccessContext() {
+  try {
+    await idbSet(ACCESS_CONTEXT_KEY, {
+      sbProfile: AppState.sbProfile,
+      sbSections: AppState.sbSections,
+      activeSectionId: AppState.activeSectionId,
+      myMembreInfo: AppState.myMembreInfo,
+    });
+  } catch (e) { /* pas grave, on retentera à la prochaine connexion réussie */ }
+}
+
+// À appeler au démarrage lorsque des données locales existent déjà, avant
+// même que le réseau ait pu confirmer quoi que ce soit : restaure le
+// dernier contexte d'accès connu pour que le premier rendu (sidebar,
+// onglets visibles, sélecteur de Section) soit correct dès hors ligne.
+// reconcileSync()/startApp() corrigeront ces valeurs dès qu'une connexion
+// réussit — ceci n'est qu'un point de départ pour le rendu immédiat.
+export async function loadCachedAccessContext() {
+  try {
+    const cached = await idbGet(ACCESS_CONTEXT_KEY);
+    if (!cached) return false;
+    AppState.sbProfile = cached.sbProfile || null;
+    AppState.sbSections = cached.sbSections || [];
+    AppState.activeSectionId = cached.activeSectionId || null;
+    AppState.myMembreInfo = cached.myMembreInfo || null;
+    return true;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -167,6 +225,10 @@ export async function pushToSupabase() {
       correction_file_name: a.correctionFileName || null, correction_storage_path: a.correctionStoragePath || null,
       lien_url: a.lienUrl || null, uploader_name: a.uploaderName || '', uploader_user_id: a.uploaderUserId || null,
     }), snapshotMaps.amphiDocuments);
+    snapshotMaps.observations = await syncTable('observations', d.observations || [], o => ({
+      id: o.id, section_id, author_user_id: o.authorUserId || null, author_name: o.authorName || '', author_role: o.authorRole || '',
+      content: o.content, created_at: o.createdAt || new Date().toISOString(), updated_at: o.updatedAt || o.createdAt || new Date().toISOString(),
+    }), snapshotMaps.observations);
     await saveSyncState(false);
     return true;
   } catch (e) {
@@ -197,6 +259,7 @@ function handleRemoteChange() {
       AppState.data.sessions = remote.sessions;
       AppState.data.pointages = remote.pointages;
       AppState.data.amphiDocuments = remote.amphiDocuments;
+      AppState.data.observations = remote.observations;
       updateSnapshotsFromCurrent();
       await idbSet('carnet-data', AppState.data);
       showToast('Données mises à jour depuis un autre appareil');
@@ -216,6 +279,7 @@ export function subscribeRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, handleRemoteChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pointages' }, handleRemoteChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'amphi_documents' }, handleRemoteChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'observations' }, handleRemoteChange)
     .subscribe();
 }
 
@@ -291,6 +355,7 @@ export async function reconcileSync(manual) {
     AppState.data.sessions = remote.sessions;
     AppState.data.pointages = remote.pointages;
     AppState.data.amphiDocuments = remote.amphiDocuments;
+    AppState.data.observations = remote.observations;
     if (!AppState.data.profile.name && remote.profile.name) AppState.data.profile.name = remote.profile.name;
     updateSnapshotsFromCurrent();
     await idbSet('carnet-data', AppState.data);
@@ -317,6 +382,7 @@ export function signOutSupabase() {
       AppState.sbUser = null;
       try { await idbDelete('carnet-data'); } catch (e) { /* noop */ }
       try { await idbDelete(SYNC_STATE_KEY); } catch (e) { /* noop */ }
+      try { await idbDelete(ACCESS_CONTEXT_KEY); } catch (e) { /* noop */ }
       try { localStorage.removeItem(LOCAL_BACKUP_KEY); } catch (e) { /* noop */ }
       try { localStorage.removeItem(SYNC_STATE_BACKUP_KEY); } catch (e) { /* noop */ }
       location.reload();

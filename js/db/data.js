@@ -9,6 +9,7 @@ import { pushToSupabase, saveSyncState, resetSnapshots, LOCAL_BACKUP_KEY } from 
 
 function ensureAmphiField(data) {
   if (data && !Array.isArray(data.amphiDocuments)) data.amphiDocuments = [];
+  if (data && !Array.isArray(data.observations)) data.observations = [];
   return data;
 }
 

@@ -7,7 +7,7 @@
 // conservés tels quels dans IndexedDB (qui supporte nativement les objets
 // File/Blob) jusqu'à ce que la connexion permette de les envoyer.
 import { AppState, showToast } from '../state.js';
-import { uid, AMPHI_TYPES_WITH_CORRECTION } from '../config.js';
+import { uid, AMPHI_TYPES_WITH_CORRECTION, isNetworkError } from '../config.js';
 import { idbGet, idbSet } from './indexeddb.js';
 import { saveData } from './data.js';
 import { imageFileToPdfBlob } from '../export/pdf-export.js';
@@ -24,12 +24,6 @@ async function persistQueue() {
 export async function initUploadQueue() {
   try { AppState.amphiUploadQueue = (await idbGet(UPLOAD_QUEUE_KEY)) || []; }
   catch (e) { AppState.amphiUploadQueue = []; }
-}
-
-function isNetworkError(e) {
-  if (!navigator.onLine) return true;
-  const msg = ((e && e.message) || '').toLowerCase();
-  return msg.includes('failed to fetch') || msg.includes('network') || msg.includes('load failed') || msg.includes('econnrefused');
 }
 
 async function uploadFileToStorage(file, ufr, filiere, sectionId) {
