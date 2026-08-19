@@ -45,6 +45,7 @@ export function renderAdministration() {
           <select class="admin-user-role" data-id="${u.id}" ${isSelf ? 'disabled' : ''}>
             <option value="utilisateur" ${u.role === 'utilisateur' ? 'selected' : ''}>Utilisateur (Amphithéâtre)</option>
             <option value="ca" ${u.role === 'ca' ? 'selected' : ''}>CA</option>
+            <option value="pf" ${u.role === 'pf' ? 'selected' : ''}>Visiteur (PF — lecture seule)</option>
             <option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super-admin</option>
           </select>
           <select class="admin-user-membre" data-id="${u.id}" data-current="${u.matched_membre_id || ''}" style="min-width:220px;${isUtilisateur ? '' : 'display:none;'}">

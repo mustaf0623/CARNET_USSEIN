@@ -11,6 +11,7 @@ import { emptyRow, sessionOptionsByYear } from '../components/ui.js';
 
 export function renderPointage() {
   const d = AppState.data;
+  const isReadOnly = AppState.sbProfile?.role === 'pf';
   if (!d.programmes.length) return `<div class="page-head"><div><div class="eyebrow">Registre</div><h1 class="page-title">Pointage</h1></div></div>
     <div class="card empty-state">${ICONS.pointage}<h3 style="color:var(--ink);margin:0 0 6px;">Aucun programme</h3><p>Créez d’abord un programme dans l’onglet Membres.</p></div>`;
   if (!AppState.pointageProgId) AppState.pointageProgId = d.programmes[0].id;
@@ -33,7 +34,7 @@ export function renderPointage() {
       <div>
         <div class="eyebrow">Registre</div>
         <h1 class="page-title">Pointage</h1>
-        <p class="page-sub">Marquez la présence ou l’absence pour une séance d’un programme.</p>
+        <p class="page-sub">${isReadOnly ? 'Consultation du pointage (lecture seule).' : 'Marquez la présence ou l’absence pour une séance d’un programme.'}</p>
       </div>
     </div>
     <div class="pointage-controls">
@@ -44,11 +45,11 @@ export function renderPointage() {
       <div class="field">
         <label>Séance</label>
         <select id="sessionSelect">
-          <option value="new" ${AppState.pointageSessionId === 'new' ? 'selected' : ''}>+ Nouvelle séance</option>
+          ${isReadOnly ? '' : `<option value="new" ${AppState.pointageSessionId === 'new' ? 'selected' : ''}>+ Nouvelle séance</option>`}
           ${sessionOptionsByYear(pastSessions, AppState.pointageSessionId)}
         </select>
       </div>
-      ${AppState.pointageSessionId === 'new' ? `
+      ${(!isReadOnly && AppState.pointageSessionId === 'new') ? `
       <div class="field"><label>Date</label><input type="date" id="sessionDate" value="${AppState.pointageDate}"></div>
       <div class="field"><label>Intitulé</label><input type="text" id="sessionLabel" placeholder="Ex. Séance du ${fmtDate(AppState.pointageDate)}" value="${escapeHtml(AppState.pointageLabel)}"></div>
       ` : ''}
@@ -57,22 +58,22 @@ export function renderPointage() {
       <h3 class="card-title">${escapeHtml(prog.nom)}</h3>
       <div class="card-sub" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
         <span>${membres.length} membre${membres.length > 1 ? 's' : ''} inscrit${membres.length > 1 ? 's' : ''}</span>
-        <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-dim);font-weight:600;cursor:pointer;">
+        ${isReadOnly ? '' : `<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-dim);font-weight:600;cursor:pointer;">
           <input type="checkbox" id="fastModeToggle" ${AppState.pointageFastMode ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--emerald);">
           Pointage rapide — tout le monde est présent par défaut, décochez les absents
-        </label>
+        </label>`}
       </div>
       <div id="memberList">
-        ${membres.length ? membres.map(m => memberRow(m, currentPointages[m.id], AppState.pointageFastMode)).join('') : emptyRow('Aucun membre inscrit à ce programme.')}
+        ${membres.length ? membres.map(m => memberRow(m, currentPointages[m.id], AppState.pointageFastMode, false, isReadOnly)).join('') : emptyRow('Aucun membre inscrit à ce programme.')}
         ${sortants.length ? `
           <div style="margin-top:22px;padding-top:14px;border-top:1px dashed var(--line-strong);">
             <div style="font-size:12px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Sortants</div>
             <div style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">Figurants — non comptés dans les effectifs. Ne cochez que s’ils sont exceptionnellement présents à cette séance ; sinon, ne pas y toucher (aucun pointage n’est enregistré pour eux par défaut).</div>
           </div>
-          ${sortants.map(m => memberRow(m, currentPointages[m.id], false, true)).join('')}
+          ${sortants.map(m => memberRow(m, currentPointages[m.id], false, true, isReadOnly)).join('')}
         ` : ''}
       </div>
-      ${(membres.length || sortants.length) ? `<div style="margin-top:20px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      ${(!isReadOnly && (membres.length || sortants.length)) ? `<div style="margin-top:20px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         ${AppState.pointageSessionId !== 'new' ? `<button class="btn btn-ghost" id="deleteSessionBtn" style="color:var(--terracotta);border-color:var(--terracotta-tint);">Supprimer cette séance</button>` : '<span></span>'}
         <button class="btn btn-primary" id="saveSession">${ICONS.mark} Enregistrer le pointage</button>
       </div>` : ''}
@@ -80,22 +81,32 @@ export function renderPointage() {
   `;
 }
 
-function memberRow(m, statut, fastMode, isSortantRow) {
-  // En mode rapide, un membre pas encore pointé pour cette séance démarre
-  // "présent" par défaut (au lieu de vide) : il suffit de décocher les
-  // absents. Un statut déjà enregistré (present/absent) est toujours
-  // respecté tel quel. Les Sortants ne bénéficient JAMAIS de ce défaut,
-  // même si le mode rapide est actif globalement (fastMode est forcé à
-  // false pour eux par l'appelant) : rien n'est présélectionné.
-  const effectiveStatut = fastMode && statut === undefined ? 'present' : statut;
-  const statusHtml = fastMode
-    ? `<div class="status-toggle">
+function memberRow(m, statut, fastMode, isSortantRow, isReadOnly) {
+  let statusHtml;
+  if (isReadOnly) {
+    // Jamais de présélection "présent" trompeuse en lecture seule : on
+    // affiche fidèlement ce qui est réellement enregistré, y compris
+    // "Non pointé" si rien ne l'a jamais été pour cette séance.
+    const label = statut === 'present' ? '✓ Présent' : statut === 'absent' ? 'Absent' : 'Non pointé';
+    const cls = statut === 'present' ? 'present active' : statut === 'absent' ? 'absent active' : '';
+    statusHtml = `<div class="status-toggle"><span class="status-btn ${cls}" style="cursor:default;">${label}</span></div>`;
+  } else if (fastMode) {
+    // En mode rapide, un membre pas encore pointé pour cette séance démarre
+    // "présent" par défaut (au lieu de vide) : il suffit de décocher les
+    // absents. Un statut déjà enregistré (present/absent) est toujours
+    // respecté tel quel. Les Sortants ne bénéficient JAMAIS de ce défaut,
+    // même si le mode rapide est actif globalement (fastMode est forcé à
+    // false pour eux par l'appelant) : rien n'est présélectionné.
+    const effectiveStatut = statut === undefined ? 'present' : statut;
+    statusHtml = `<div class="status-toggle">
       <button class="status-btn present ${effectiveStatut === 'present' ? 'active' : ''}" data-statut="present" style="min-width:110px;">${effectiveStatut === 'present' ? '✓ Présent' : 'Absent'}</button>
-    </div>`
-    : `<div class="status-toggle">
+    </div>`;
+  } else {
+    statusHtml = `<div class="status-toggle">
       <button class="status-btn present ${statut === 'present' ? 'active' : ''}" data-statut="present">Présent</button>
       <button class="status-btn absent ${statut === 'absent' ? 'active' : ''}" data-statut="absent">Absent</button>
     </div>`;
+  }
   return `<div class="member-row" data-membre="${m.id}" ${isSortantRow ? 'data-sortant="1"' : ''}>
     <div class="member-avatar">${initials(m.nom, m.prenom)}</div>
     <div class="member-info">

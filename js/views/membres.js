@@ -10,6 +10,7 @@ import { buildExportPdf } from '../export/pdf-export.js';
 
 export function renderMembres() {
   const d = AppState.data;
+  const isReadOnly = AppState.sbProfile?.role === 'pf';
   return `
     <div class="page-head">
       <div>
@@ -18,6 +19,7 @@ export function renderMembres() {
         <p class="page-sub">Gérez vos programmes, ajoutez des membres un par un ou importez un fichier Excel existant.</p>
       </div>
     </div>
+    ${isReadOnly ? '' : `
     <div class="grid grid-2" style="align-items:start;">
       <div class="card">
         <h3 class="card-title">Programmes</h3>
@@ -72,6 +74,7 @@ export function renderMembres() {
       <div class="card-sub">Les en-têtes déjà présentes dans votre fichier seront reconnues et associées automatiquement</div>
       ${renderImportZone()}
     </div>
+    `}
 
     <div class="card" style="margin-top:16px;">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
@@ -113,12 +116,12 @@ export function renderMembres() {
                 ? `<span class="pill" style="background:var(--terracotta-tint);border-color:var(--terracotta);color:var(--terracotta-dim);">Accès coupé</span>`
                 : `<span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);">Accès actif · ${SORTANT_GRACE_DAYS - days}j restants</span>`;
             }
-            return `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button></td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${days !== null ? days + ' jour' + (days > 1 ? 's' : '') : '—'}</td><td>${compteHtml}</td><td><button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button></td></tr>`;
+            return `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button></td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${days !== null ? days + ' jour' + (days > 1 ? 's' : '') : '—'}</td><td>${compteHtml}</td><td>${isReadOnly ? '' : `<button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button>`}</td></tr>`;
           }).join('')}
         </tbody></table>`;
         }
         return `<table class="data-table"><thead><tr><th>Nom</th><th>Sexe</th><th>Programmes</th><th></th></tr></thead><tbody>
-        ${filtered.map(m => `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button>${m.ap ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);">AP</span>` : ''}${m.extra && Object.keys(m.extra).length ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:10px;" title="Informations importées disponibles">i</span>` : ''}</td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${m.allProgrammes ? `<span class="pill" style="background:var(--emerald-tint);border-color:var(--emerald);color:var(--emerald-dim);">Tous les programmes</span>` : m.programmeIds.map(pid => `<span class="pill">${escapeHtml((d.programmes.find(p => p.id === pid) || {}).nom || '—')}</span>`).join('')}</td><td><button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button></td></tr>`).join('')}
+        ${filtered.map(m => `<tr><td><button class="member-name-link" data-id="${m.id}" style="background:none;border:none;padding:0;color:var(--ink);font-weight:700;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);">${escapeHtml(m.prenom)} ${escapeHtml(m.nom)}</button>${m.ap ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);">AP</span>` : ''}${m.extra && Object.keys(m.extra).length ? ` <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:10px;" title="Informations importées disponibles">i</span>` : ''}</td><td>${m.sexe === 'H' ? 'Homme' : 'Femme'}</td><td>${m.allProgrammes ? `<span class="pill" style="background:var(--emerald-tint);border-color:var(--emerald);color:var(--emerald-dim);">Tous les programmes</span>` : m.programmeIds.map(pid => `<span class="pill">${escapeHtml((d.programmes.find(p => p.id === pid) || {}).nom || '—')}</span>`).join('')}</td><td>${isReadOnly ? '' : `<button class="edit-name-btn delete-membre-btn" data-id="${m.id}" style="color:var(--terracotta);">supprimer</button>`}</td></tr>`).join('')}
       </tbody></table>`;
       })()}`;
       })()}
@@ -167,6 +170,7 @@ export function renderMembres() {
       </div>
     </div>
 
+    ${isReadOnly ? '' : `
     <div class="card" style="margin-top:16px;border-color:var(--terracotta-tint);">
       <h3 class="card-title" style="color:var(--terracotta-dim);">Zone sensible</h3>
       <div class="card-sub">Réinitialise entièrement l’application : programmes, membres, séances et pointages. Votre nom de signataire est conservé.</div>
@@ -174,6 +178,7 @@ export function renderMembres() {
       <div class="card-sub" style="margin-top:16px;">Supprime tous les membres (permanents et ponctuels) et leurs pointages associés — retour à zéro membre, comme s’il n’y avait jamais eu d’import. Les programmes et les séances restent intacts.</div>
       <button class="btn btn-ghost" id="clearImportedDataBtn" style="border-color:var(--terracotta);color:var(--terracotta-dim);">Supprimer tous les membres</button>
     </div>
+    `}
   `;
 }
 

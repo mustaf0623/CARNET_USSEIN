@@ -21,6 +21,7 @@ import { renderMembres, attachMembresEvents } from './membres.js';
 import { renderRapports, attachRapportsEvents } from './rapports.js';
 import { renderAmphitheatre, attachAmphitheatreEvents } from './amphitheatre.js';
 import { renderAdministration, attachAdministrationEvents } from './administration.js';
+import { renderObservations, attachObservationsEvents } from './observations.js';
 
 export function render() {
   const app = document.getElementById('app');
@@ -47,11 +48,12 @@ export function render() {
         ${AppState.sbProfile?.role !== 'utilisateur' ? tabBtn('membres', ICONS.membres, 'Membres') : ''}
         ${AppState.sbProfile?.role !== 'utilisateur' ? tabBtn('rapports', ICONS.rapports, 'Rapports') : ''}
         ${tabBtn('amphitheatre', ICONS.amphi, 'Amphithéâtre')}
+        ${AppState.sbProfile?.role !== 'utilisateur' ? tabBtn('observations', ICONS.observations, 'Observations') : ''}
         ${AppState.sbProfile?.role === 'super_admin' ? tabBtn('administration', ICONS.settings, 'Administration') : ''}
       </nav>
       <div class="sidebar-footer">
-        <div class="sidebar-org">${escapeHtml((AppState.sbSections.find(s => s.id === AppState.activeSectionId) || {}).nom || 'Commission Administrative')}</div>
-        ${AppState.sbProfile?.role === 'super_admin' ? `<select id="sectionSwitcher" style="width:100%;margin:0 0 8px;">${AppState.sbSections.map(s => `<option value="${s.id}" ${s.id === AppState.activeSectionId ? 'selected' : ''}>${escapeHtml(s.nom)}</option>`).join('')}</select>` : ''}
+        <div class="sidebar-org">${escapeHtml((AppState.sbSections.find(s => s.id === AppState.activeSectionId) || {}).nom || 'Commission Administrative')}${AppState.sbProfile?.role === 'pf' ? ' <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:9.5px;vertical-align:middle;">lecture seule</span>' : ''}</div>
+        ${(AppState.sbProfile?.role === 'super_admin' || AppState.sbProfile?.role === 'pf') ? `<select id="sectionSwitcher" style="width:100%;margin:0 0 8px;">${AppState.sbSections.map(s => `<option value="${s.id}" ${s.id === AppState.activeSectionId ? 'selected' : ''}>${escapeHtml(s.nom)}</option>`).join('')}</select>` : ''}
         <div class="user-chip">
           <div class="avatar">${(AppState.data.profile.name || '?').trim()[0]?.toUpperCase() || '?'}</div>
           <div>
@@ -96,9 +98,21 @@ function attachShellEvents() {
   });
   const sectionSwitcher = document.getElementById('sectionSwitcher');
   if (sectionSwitcher) sectionSwitcher.addEventListener('change', async e => {
-    AppState.activeSectionId = e.target.value;
-    AppState.data = await pullFromSupabase();
-    updateSnapshotsFromCurrent();
+    const previousSectionId = AppState.activeSectionId;
+    const newSectionId = e.target.value;
+    if (!navigator.onLine) {
+      showToast('Changement de Section impossible hors ligne — reconnectez-vous et réessayez');
+      sectionSwitcher.value = previousSectionId; // annule visuellement la sélection
+      return;
+    }
+    AppState.activeSectionId = newSectionId;
+    try {
+      AppState.data = await pullFromSupabase();
+      updateSnapshotsFromCurrent();
+    } catch (err) {
+      AppState.activeSectionId = previousSectionId; // on revient à un état cohérent
+      showToast('Impossible de charger cette Section : ' + (err && err.message ? err.message : 'réessayez plus tard'));
+    }
     render();
   });
 }
@@ -193,6 +207,7 @@ function renderTab() {
   if (AppState.tab === 'membres') return renderMembres();
   if (AppState.tab === 'rapports') return renderRapports();
   if (AppState.tab === 'amphitheatre') return renderAmphitheatre();
+  if (AppState.tab === 'observations') return renderObservations();
   if (AppState.tab === 'administration' && AppState.sbProfile?.role === 'super_admin') return renderAdministration();
   return '';
 }
@@ -202,5 +217,6 @@ function attachTabEvents() {
   if (AppState.tab === 'membres') attachMembresEvents();
   if (AppState.tab === 'rapports') attachRapportsEvents();
   if (AppState.tab === 'amphitheatre') attachAmphitheatreEvents();
+  if (AppState.tab === 'observations') attachObservationsEvents();
   if (AppState.tab === 'administration') attachAdministrationEvents();
 }

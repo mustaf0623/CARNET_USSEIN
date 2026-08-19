@@ -143,6 +143,7 @@ export function renderAmphitheatre() {
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const filtered = q ? docs.filter(a => norm(a.reference).includes(q) || norm(a.titre).includes(q)) : docs;
   const canManage = AppState.sbProfile?.role === 'super_admin' || AppState.sbProfile?.role === 'ca';
+  const isReadOnly = AppState.sbProfile?.role === 'pf';
 
   return `<div class="page-head"><div><div class="eyebrow">Amphithéâtre</div><h1 class="page-title">${escapeHtml(ufr)} — ${escapeHtml(filiere)}</h1><p class="page-sub">Cours, TD (avec correction si disponible), TP et liens partagés par les membres de cette Filière.</p></div></div>
     ${renderUploadQueueSection()}
@@ -151,6 +152,7 @@ export function renderAmphitheatre() {
     ${scopeSelector}
     ${niveauSelector}
 
+    ${isReadOnly ? '' : `
     <div class="card">
       <h3 class="card-title">Déposer un document</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
@@ -183,6 +185,7 @@ export function renderAmphitheatre() {
       <div style="font-size:11px;color:var(--ink-faint);margin-top:8px;">PDF, Word, PowerPoint acceptés tels quels. Une image est automatiquement convertie en PDF.</div>
       <button class="btn btn-primary" id="amphiUploadBtn" style="margin-top:12px;">Déposer</button>
     </div>
+    `}
 
     <div class="card" style="margin-top:16px;">
       <h3 class="card-title">Documents</h3>
