@@ -2,7 +2,7 @@
 import { AppState } from '../state.js';
 import { escapeHtml, ICONS } from '../config.js';
 import { scopedStats, programStats, sessionStats, getAvailableYears, periodMatches } from '../domain/stats.js';
-import { statCard, emptyRow } from '../components/ui.js';
+import { statCard, statCardSplit, emptyRow } from '../components/ui.js';
 
 export function renderDashboard() {
   const d = AppState.data;
@@ -66,7 +66,7 @@ export function renderDashboard() {
     </div>
     <div class="grid grid-4" style="margin-bottom:18px;">
       ${statCard('Membres', g.total, filter === 'global' ? 'inscrits au total' : 'inscrits à ce programme', 'stat-emerald')}
-      ${statCard('Hommes / Femmes', g.nbH + ' / ' + g.nbF, Math.round((g.nbF/(g.total||1))*100) + '% de femmes', 'stat-gold')}
+      ${statCardSplit('Hommes / Femmes', 'Hommes', g.nbH, 'Femmes', g.nbF, Math.round((g.nbF/(g.total||1))*100) + '% de femmes', 'stat-gold')}
       ${statCard('Taux de présence', g.tauxPresence + '%', yearFilter === 'toutes' ? 'toutes séances confondues' : 'séances de ' + yearFilter, 'stat-emerald')}
       ${statCard('Taux d’absence', g.tauxAbsence + '%', yearFilter === 'toutes' ? 'toutes séances confondues' : 'séances de ' + yearFilter, 'stat-terracotta')}
     </div>
