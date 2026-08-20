@@ -26,7 +26,7 @@ export function renderObservations() {
   const role = AppState.sbProfile?.role;
   const canWrite = role === 'pf' || role === 'ca' || role === 'super_admin';
   const observations = sortedObservations();
-  return `<div class="page-head"><div><div class="eyebrow">Suivi</div><h1 class="page-title">Observations</h1><p class="page-sub">Espace d’échange entre le Visiteur (PF) et la Commission Administrative de cette Section — visible uniquement par son CA et le super-admin.</p></div></div>
+  return `<div class="page-head"><div><div class="eyebrow">Suivi</div><h1 class="page-title">Observations</h1><p class="page-sub">Espace d’échange entre Point Focaux et la Commission Administrative de la Section. Visible uniquement par la CA et le super-admin.</p></div></div>
     ${canWrite ? `<div class="card">
       <h3 class="card-title">Nouvelle observation</h3>
       <textarea id="newObservationText" placeholder="Écrire une observation…" style="width:100%;min-height:100px;padding:10px 12px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;resize:vertical;box-sizing:border-box;"></textarea>
