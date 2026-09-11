@@ -21,6 +21,7 @@ import { initSyncState, initSupabaseClient, startApp, reconcileSync, loadCachedA
 import { initUploadQueue, processUploadQueue } from './db/upload-queue.js';
 import { initInstallPrompt, registerServiceWorker } from './pwa.js';
 
+initInstallPrompt();
 registerServiceWorker();
 
 // Casse le cycle d'import : state.js est un module bas niveau qui ne peut pas
@@ -117,6 +118,4 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
   // là dès l'ouverture de l'app.
   if (AppState.sb && AppState.sbUser) processUploadQueue();
 
-  initInstallPrompt();
-  registerServiceWorker();
 })();
