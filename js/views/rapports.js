@@ -130,13 +130,17 @@ export function attachRapportsEvents() {
     yearSel.addEventListener('change', e => { AppState.reportYear = e.target.value; });
   }
   const genBtn = document.getElementById('genPdfBtn');
-  if (genBtn) genBtn.addEventListener('click', () => {
+  if (genBtn) genBtn.addEventListener('click', async () => {
     const scope = AppState.reportScope || 'global';
     const sessionId = AppState.reportSessionId || 'toutes';
     const yearVal = AppState.reportYear || 'toutes';
-    if (sessionId !== 'toutes' && scope !== 'global') downloadPdf(scope, 'toutes', sessionId);
-    else downloadPdf(scope, yearVal);
-    showToast('Rapport PDF téléchargé');
+    try {
+      if (sessionId !== 'toutes' && scope !== 'global') await downloadPdf(scope, 'toutes', sessionId);
+      else await downloadPdf(scope, yearVal);
+      showToast('Rapport PDF téléchargé');
+    } catch (error) {
+      showToast('Impossible de générer le rapport');
+    }
   });
   const changeSigBtn = document.getElementById('changeSignataireBtn');
   if (changeSigBtn) changeSigBtn.addEventListener('click', renameSignataire);
