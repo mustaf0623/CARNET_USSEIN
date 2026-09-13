@@ -30,6 +30,7 @@ function sectionDataKey(sectionId) { return 'carnet-data:' + sectionId; }
 // basculer vers une autre Section puis y écrire confondrait ses données
 // avec celles de la Section précédente lors du prochain envoi.
 const perSectionSnapshots = new Map(); // sectionId -> { programmes, membres, sessions, pointages, amphiDocuments, observations }
+
 function emptySnapshotSet() {
   return { programmes: new Map(), membres: new Map(), sessions: new Map(), pointages: new Map(), amphiDocuments: new Map(), observations: new Map() };
 }
@@ -37,7 +38,6 @@ function snapshotsFor(sectionId) {
   if (!perSectionSnapshots.has(sectionId)) perSectionSnapshots.set(sectionId, emptySnapshotSet());
   return perSectionSnapshots.get(sectionId);
 }
-
 let pendingFlags = new Map(); // sectionId -> boolean ("changements locaux pas encore envoyés")
 
 function serialisePerSectionSnapshots() {
@@ -55,10 +55,12 @@ function restorePerSectionSnapshots(obj) {
     perSectionSnapshots.set(sectionId, snap);
   });
 }
+
 async function loadSyncStateBlob() {
   try { const saved = await idbGet(SYNC_STATE_KEY); if (saved) return saved; } catch (e) { /* copie de secours ci-dessous */ }
   try { const backup = localStorage.getItem(SYNC_STATE_BACKUP_KEY); return backup ? JSON.parse(backup) : null; } catch (e) { return null; }
 }
+
 export async function saveSyncState(pending) {
   if (AppState.activeSectionId) pendingFlags.set(AppState.activeSectionId, !!pending);
   const blob = { pendingFlags: Array.from(pendingFlags.entries()), snapshots: serialisePerSectionSnapshots() };
@@ -87,6 +89,7 @@ export async function initSyncState(hasLocalData) {
     pendingFlags.set(AppState.activeSectionId, true);
   }
 }
+
 export function isSyncPending() { return AppState.activeSectionId ? !!pendingFlags.get(AppState.activeSectionId) : false; }
 
 export function updateSnapshotsFromCurrent() {
@@ -99,6 +102,7 @@ export function updateSnapshotsFromCurrent() {
   snap.amphiDocuments = new Map((d.amphiDocuments || []).map(r => [r.id, JSON.stringify(r)]));
   snap.observations = new Map((d.observations || []).map(r => [r.id, JSON.stringify(r)]));
 }
+
 // Ne réinitialise QUE la Section actuellement active (ex. après "Zone
 // sensible" / réinitialisation), jamais les autres Sections en cache.
 export function resetSnapshots() {
@@ -171,7 +175,6 @@ export async function loadAccessContext() {
   } else {
     AppState.activeSectionId = AppState.sbProfile.sectionId;
   }
-
   // La table `membres` est inaccessible en lecture directe pour le rôle
   // "utilisateur" (RLS réservée à CA/super-admin) : le seul canal autorisé
   // pour connaître son propre membre lié (UFR/Filière, nom, statut Sortant)
@@ -190,7 +193,6 @@ export async function loadAccessContext() {
   } else {
     AppState.myMembreInfo = null;
   }
-
   // Contrairement à AppState.data (programmes/membres/pointages...), le
   // contexte d'accès (rôle, Sections, Section active, membre lié) n'était
   // jusqu'ici JAMAIS mis en cache localement — uniquement re-dérivé d'un
@@ -282,7 +284,19 @@ export async function pushToSupabase() {
     return true;
   } catch (e) {
     console.error('Carnet — échec pushToSupabase:', e);
-    showToast('Échec de synchronisation : ' + (e && e.message ? e.message : 'erreur inconnue'));
+    // CORRECTIF : un fetch qui échoue simplement parce qu'on est hors ligne
+    // (TypeError: "Load failed" sous Safari/WebKit, "Failed to fetch" sous
+    // Chrome) n'est pas une vraie erreur de synchronisation — la donnée est
+    // déjà en sécurité localement (saveData() l'a écrite avant cet appel) et
+    // sera renvoyée automatiquement au prochain reconcileSync(). On distingue
+    // donc ce cas d'un échec réel (erreur serveur, RLS, etc.) pour ne pas
+    // inquiéter inutilement l'utilisateur.
+    const isOffline = !navigator.onLine || (e && (e.message === 'Load failed' || e.message === 'Failed to fetch'));
+    if (isOffline) {
+      showToast('Hors ligne — sera synchronisé au retour du réseau');
+    } else {
+      showToast('Échec de synchronisation : ' + (e && e.message ? e.message : 'erreur inconnue'));
+    }
     return false;
   } finally {
     syncing = false;
@@ -333,7 +347,6 @@ export function subscribeRealtime() {
 }
 
 /* ================= Démarrage, réconciliation & bascule de Section ================= */
-
 export async function startApp(localData) {
   let data = localData || emptyData();
   let remoteReady = false;
@@ -432,7 +445,6 @@ export async function switchSection(newSectionId) {
   if (previousSectionId && previousSectionId !== newSectionId && navigator.onLine && AppState.sb && AppState.sbUser) {
     try { await pushToSupabase(); } catch (e) { /* on continue quand même vers la nouvelle Section */ }
   }
-
   // Essentiel : les identifiants de programme/séance/membre en mémoire
   // (ex. AppState.pointageProgId) appartiennent à l'ANCIENNE Section et
   // sont générés aléatoirement — ils ne correspondront quasiment jamais à
@@ -441,14 +453,11 @@ export async function switchSection(newSectionId) {
   // changement de Section plantait en cherchant un programme introuvable,
   // figeant tout l'affichage.
   resetSectionScopedUIState();
-
   AppState.activeSectionId = newSectionId;
   await persistAccessContext();
-
   let cached = null;
   try { cached = await idbGet(sectionDataKey(newSectionId)); } catch (e) { /* noop */ }
   if (cached) { AppState.data = cached; updateSnapshotsFromCurrent(); }
-
   if (!navigator.onLine || !AppState.sb || !AppState.sbUser) {
     if (!cached) {
       AppState.data = emptyData();
@@ -459,7 +468,6 @@ export async function switchSection(newSectionId) {
     AppState.render();
     return;
   }
-
   try {
     const remote = await pullFromSupabase();
     if (!remote.profile.name && AppState.data?.profile?.name) remote.profile.name = AppState.data.profile.name;
