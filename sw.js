@@ -1,15 +1,20 @@
 // sw.js — Carnet
 // Stratégie : Stale-While-Revalidate pour les ressources de l'app,
 // + cache des assets externes utilisés (CDN, polices) et fallback navigation hors-ligne.
-const CACHE_NAME = 'carnet-v22A';
+const CACHE_NAME = 'carnet-v23';
 const APP_SHELL_URL = new URL('./index.html', self.location.href).href;
+
+// Ces fichiers sont l'app elle-même : ils sont installés en mode fail-fast
+// (cache.addAll) — si l'un d'eux échoue, TOUTE l'installation échoue et le
+// navigateur retentera plus tard, plutôt que de laisser le Service Worker
+// s'activer avec un module manquant qui plantera silencieusement hors ligne.
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icon.svg',
   './icon-192.png',
   './icon-512.png',
+  './icon.svg',
   './apple-touch-icon-v2.png',
   './css/style.css',
   './js/main.js',
@@ -38,7 +43,9 @@ const CORE_ASSETS = [
 ];
 
 // Assets externes référencés dans index.html — on les met en cache pour permettre
-// un fonctionnement hors-ligne après un premier chargement réussi.
+// un fonctionnement hors-ligne après un premier chargement réussi. Non
+// bloquants à l'installation : volumineux, et un échec ponctuel d'un CDN ne
+// doit pas empêcher l'app elle-même de démarrer hors ligne.
 const EXTERNAL_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -51,23 +58,42 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      const putFresh = async (url) => {
-        try {
-          const resp = await fetch(url, { cache: 'no-store' });
-          if (resp && (resp.ok || resp.type === 'opaque')) await cache.put(url, resp.clone());
-        } catch (e) { /* noop — sera retenté via le fetch handler */ }
-      };
-      try {
-        await Promise.allSettled([...CORE_ASSETS, ...EXTERNAL_ASSETS].map(putFresh));
-      } catch (err) {
-        try { await Promise.allSettled(CORE_ASSETS.map(putFresh)); } catch (e) { /* noop */ }
-      }
+
+      // CRITIQUE : fail-fast. Si un seul de ces fichiers ne se met pas en
+      // cache (chemin erroné, fichier renommé côté dépôt, coupure réseau
+      // pendant l'installation), cache.addAll() rejette et l'installation
+      // entière échoue — le navigateur réessaiera automatiquement au
+      // prochain chargement au lieu d'activer un cache silencieusement
+      // incomplet (ce qui, avant ce correctif, pouvait faire planter l'app
+      // hors ligne sur un module JS manquant, sans aucun signal).
+      await cache.addAll(CORE_ASSETS);
+
+      // Best-effort pour les CDN externes : chaque échec est loggé, pas
+      // avalé silencieusement, mais ne bloque pas l'installation.
+      await Promise.allSettled(
+        EXTERNAL_ASSETS.map(async (url) => {
+          try {
+            const resp = await fetch(url, { cache: 'no-store' });
+            if (resp && (resp.ok || resp.type === 'opaque')) {
+              await cache.put(url, resp.clone());
+            } else {
+              console.warn('[SW] asset externe non mis en cache (réponse non-ok):', url);
+            }
+          } catch (e) {
+            console.warn('[SW] échec mise en cache asset externe:', url, e);
+          }
+        })
+      );
     })()
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  // Avec l'installation fail-fast ci-dessus, ce bloc ne s'exécute que si le
+  // nouveau cache est complet (sinon 'install' a déjà échoué et ce SW n'est
+  // jamais activé) — on peut donc purger l'ancien cache sans risque de
+  // perdre un asset qui n'existerait que dans l'ancienne version.
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
@@ -79,6 +105,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+
+  // Ne jamais intercepter les requêtes vers d'autres origines (API Supabase,
+  // Supabase Storage, etc.) : elles doivent atteindre le réseau directement,
+  // sans jamais être servies depuis un cache périmé du Service Worker. Seuls
+  // les CDN explicitement listés dans EXTERNAL_ASSETS restent gérés ici.
+  if (new URL(req.url).origin !== self.location.origin && !EXTERNAL_ASSETS.includes(req.url)) {
+    return;
+  }
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
@@ -92,15 +126,17 @@ self.addEventListener('fetch', (event) => {
       try {
         const netResp = await fetch(req, { cache: 'no-store' });
         if (netResp && netResp.ok) {
-          // Enregistrez la réponse réseau (utile pour mise à jour)
           try { cache.put(req, netResp.clone()); } catch (e) { /* noop */ }
           return netResp;
         }
+        return cached || await cache.match(APP_SHELL_URL) || await cache.match('./');
       } catch (err) {
-        // Réseau indisponible — retourner la page en cache (index) si disponible
-        return cached || await cache.match(APP_SHELL_URL) || await cache.match('./') || await cache.match('./index.html');
+        // Réseau indisponible — retourner la page en cache si disponible.
+        // APP_SHELL_URL est résolu via new URL(), donc correct même en
+        // sous-dossier (ex. GitHub Pages /CARNET_USSEIN/), contrairement à
+        // un chemin absolu codé en dur comme '/index.html'.
+        return cached || await cache.match(APP_SHELL_URL) || await cache.match('./');
       }
-      return cached || await cache.match(APP_SHELL_URL) || await cache.match('./') || await cache.match('./index.html');
     }
 
     // Pour les autres requêtes : Stale-While-Revalidate
@@ -126,7 +162,7 @@ self.addEventListener('fetch', (event) => {
       }
       return cached;
     } catch (err) {
-      // Dernier recours : retourner ce qui est en cache (ou null)
+      // Dernier recours : retourner ce qui est en cache (ou undefined)
       return cached;
     }
   })());
