@@ -51,7 +51,7 @@ export function renderDashboard() {
       <div>
         <div class="eyebrow">Vue d’ensemble</div>
         <h1 class="page-title">Tableau de bord</h1>
-        <p class="page-sub">Comportement des données de présence — filtrable par programme et par année.</p>
+        <p class="page-sub">Comportement des données de présence filtrable par programme et par année.</p>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <div class="field">
