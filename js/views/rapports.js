@@ -54,7 +54,7 @@ export function renderRapports() {
         <p style="font-size:12.5px;color:var(--ink-faint);line-height:1.6;">
           ${sessionId !== 'toutes' && scope !== 'global'
             ? 'Le rapport listera la présence de chaque membre pour cette séance précise, avec le taux de présence associé.'
-            : 'Le rapport inclura : effectifs, répartition Hommes/Femmes, taux de présence, taux d’absence et taux de participation — globaux ou filtrés selon la portée et la période choisies (année entière ou un mois précis).'}
+            : 'Le rapport inclura : effectifs, répartition Hommes/Femmes, taux de présence, taux d’absence et taux de participation globaux ou filtrés selon la portée et la période choisies (année entière ou un mois précis).'}
         </p>
         <div style="margin-top:18px;">
           <button class="btn btn-primary" id="genPdfBtn">${ICONS.download} Générer le PDF</button>
@@ -75,7 +75,7 @@ export function renderRapports() {
     </div>
     <div class="card" style="margin-top:20px;">
       <h3 class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-        <span>Répertoire — absences consécutives</span>
+        <span>Répertoire d'absences consécutives</span>
         <span style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-dim);flex-wrap:wrap;">
           Programme
           <select id="watchlistProgramme" style="padding:5px 8px;">
