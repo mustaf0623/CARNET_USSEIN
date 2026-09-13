@@ -78,7 +78,7 @@ export function renderPointage() {
         ${sortants.length ? `
           <div style="margin-top:22px;padding-top:14px;border-top:1px dashed var(--line-strong);">
             <div style="font-size:12px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Sortants</div>
-            <div style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">Figurants — non comptés dans les effectifs. Ne cochez que s’ils sont exceptionnellement présents à cette séance ; sinon, ne pas y toucher (aucun pointage n’est enregistré pour eux par défaut).</div>
+            <div style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">Figurants non comptés dans les effectifs. Ne cochez que s’ils sont exceptionnellement présents à cette séance ; sinon, ne pas y toucher (aucun pointage n’est enregistré pour eux par défaut).</div>
           </div>
           ${sortants.map(m => memberRow(m, currentPointages[m.id], false, true, isReadOnly)).join('')}
         ` : ''}
