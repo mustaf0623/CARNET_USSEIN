@@ -41,18 +41,36 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
     if (syncBtnEl) syncBtnEl.style.display = 'inline-flex';
     sb = initSupabaseClient();
     if (sb) {
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        AppState.sbUser = session ? session.user : null;
-      } catch (e) {
-        // CORRECTIF : ne plus détruire AppState.sb ici. getSession() peut
-        // rejeter simplement parce que le jeton d'accès a expiré et ne peut
-        // pas être rafraîchi hors ligne (TypeError: Load failed sous
-        // Safari) — ce n'est PAS une raison de perdre le client Supabase.
-        // Le nullifier empêchait ensuite loadCachedAccessContext() de
-        // s'exécuter (étape 2 ci-dessous) et cassait toute tentative de
-        // reconnexion ultérieure (reconcileSync vérifie AppState.sb).
+      if (!navigator.onLine) {
+        // Court-circuit : pas la peine de tenter un appel réseau qu'on sait
+        // voué à l'échec — ça évite d'attendre inutilement un timeout.
         AppState.sbUser = null;
+      } else {
+        try {
+          // getSession() peut, si le jeton est expiré, tenter un
+          // rafraîchissement réseau. Sur une connexion qui SE CROIT active
+          // mais ne l'est pas vraiment (wifi captif, réseau instable),
+          // cette requête n'échoue pas immédiatement : elle attend un
+          // timeout navigateur (potentiellement plusieurs secondes) avant
+          // de rejeter — et comme cet appel est awaité avant le premier
+          // rendu, l'app entière semble "mettre du temps à s'ouvrir".
+          // On borne donc cet appel à un délai raisonnable : au-delà, on
+          // continue sans session plutôt que de faire attendre l'utilisateur.
+          const withTimeout = (promise, ms) => Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout getSession')), ms)),
+          ]);
+          const { data: { session } } = await withTimeout(sb.auth.getSession(), 4000);
+          AppState.sbUser = session ? session.user : null;
+        } catch (e) {
+          // CORRECTIF : ne plus détruire AppState.sb ici. Un échec (ou un
+          // timeout) ne signifie pas que le client Supabase est inutilisable
+          // — juste que la session n'a pas pu être confirmée maintenant.
+          // Le nullifier empêchait ensuite loadCachedAccessContext() de
+          // s'exécuter (étape 2 ci-dessous) et cassait toute tentative de
+          // reconnexion ultérieure (reconcileSync vérifie AppState.sb).
+          AppState.sbUser = null;
+        }
       }
     }
   }
