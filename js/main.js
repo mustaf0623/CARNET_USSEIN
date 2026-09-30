@@ -41,18 +41,19 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
     if (syncBtnEl) syncBtnEl.style.display = 'inline-flex';
     sb = initSupabaseClient();
     if (sb) {
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        AppState.sbUser = session ? session.user : null;
-      } catch (e) {
-        // CORRECTIF : ne plus détruire AppState.sb ici. getSession() peut
-        // rejeter simplement parce que le jeton d'accès a expiré et ne peut
-        // pas être rafraîchi hors ligne (TypeError: Load failed sous
-        // Safari) — ce n'est PAS une raison de perdre le client Supabase.
-        // Le nullifier empêchait ensuite loadCachedAccessContext() de
-        // s'exécuter (étape 2 ci-dessous) et cassait toute tentative de
-        // reconnexion ultérieure (reconcileSync vérifie AppState.sb).
+      if (!navigator.onLine) {
         AppState.sbUser = null;
+      } else {
+        try {
+          const withTimeout = (promise, ms) => Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout getSession')), ms)),
+          ]);
+          const { data: { session } } = await withTimeout(sb.auth.getSession(), 4000);
+          AppState.sbUser = session ? session.user : null;
+        } catch (e) {
+          AppState.sbUser = null;
+        }
       }
     }
   }

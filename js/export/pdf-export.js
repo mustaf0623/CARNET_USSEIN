@@ -3,7 +3,7 @@
 // rapports de présence signés, et conversion image → PDF pour l'Amphithéâtre.
 
 import { AppState } from '../state.js';
-import { fmtDate, nowTime, todayISO, monthLabel, periodMatches, PDF_LOGO_PNG } from '../config.js';
+import { fmtDate, nowTime, todayISO, monthLabel, periodMatches } from '../config.js';
 import { programStats, sessionStats } from '../domain/stats.js';
 import { memberInProgramme, isSortant } from '../domain/membres.js';
 
@@ -112,7 +112,31 @@ export async function imageFileToPdfBlob(file) {
   return doc.output('blob');
 }
 
-export function buildReportDoc(scope, yearFilter, sessionId) {
+let pdfLogoPromise;
+function loadPdfLogo() {
+  if (!pdfLogoPromise) {
+    pdfLogoPromise = fetch(new URL('../../icon.svg', import.meta.url))
+      .then(response => {
+        if (!response.ok) throw new Error('Logo introuvable');
+        return response.text();
+      })
+      .then(svg => new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 192;
+          canvas.height = 192;
+          canvas.getContext('2d').drawImage(image, 0, 0, 192, 192);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        image.onerror = reject;
+        image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg.replace(/<rect[^>]*\/>/, ''));
+      }));
+  }
+  return pdfLogoPromise;
+}
+
+export async function buildReportDoc(scope, yearFilter, sessionId) {
   yearFilter = yearFilter || 'toutes';
   const d = AppState.data;
   const { jsPDF } = window.jspdf;
@@ -123,20 +147,14 @@ export function buildReportDoc(scope, yearFilter, sessionId) {
   const margin = 15;
   const contentW = pageW - margin * 2;
   const scopeLabel = scope === 'global' ? 'Tous les programmes' : ((d.programmes.find(p => p.id === scope) || {}).nom || '');
+  const logo = await loadPdfLogo();
 
   // ---------- Bandeau d'en-tête ----------
   doc.setFillColor(...emeraldDk);
   doc.rect(0, 0, pageW, 34, 'F');
   doc.setFillColor(...gold);
   doc.rect(0, 34, pageW, 1.4, 'F');
-  try {
-    doc.addImage(PDF_LOGO_PNG, 'PNG', margin - 0.5, 9.5, 13, 13);
-  } catch (e) {
-    doc.setFillColor(...white);
-    doc.circle(margin + 6, 16, 6.5, 'F');
-    doc.setFont('times', 'bold'); doc.setFontSize(13); doc.setTextColor(...emeraldDk);
-    doc.text('C', margin + 6, 18.7, { align: 'center' });
-  }
+  doc.addImage(logo, 'PNG', margin - 0.5, 9.5, 13, 13);
   doc.setFont('times', 'bold'); doc.setFontSize(19); doc.setTextColor(...white);
   doc.text('Carnet', margin + 17, 15);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(230, 240, 235);
@@ -327,7 +345,7 @@ export function buildReportDoc(scope, yearFilter, sessionId) {
   return { doc, filename };
 }
 
-export function downloadPdf(scope, yearFilter, sessionId) {
-  const { doc, filename } = buildReportDoc(scope, yearFilter, sessionId);
+export async function downloadPdf(scope, yearFilter, sessionId) {
+  const { doc, filename } = await buildReportDoc(scope, yearFilter, sessionId);
   doc.save(filename);
 }

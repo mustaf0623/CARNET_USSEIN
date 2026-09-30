@@ -51,7 +51,7 @@ export function renderMembres() {
           <label>Informations complémentaires (base importée)</label>
           ${(() => {
             const keys = extraFieldKeys(d);
-            if (!keys.length) return `<div style="font-size:11.5px;color:var(--ink-faint);">Aucun champ détecté pour l’instant — importez d’abord un fichier pour que ces champs apparaissent ici.</div>`;
+            if (!keys.length) return `<div style="font-size:11.5px;color:var(--ink-faint);">Aucun champ détecté pour l’instant; Importez d’abord un fichier pour que ces champs apparaissent ici.</div>`;
             return `<div class="extra-info-grid" style="max-height:min(260px, 40vh);">${keys.map(k => `<div class="extra-info-item"><label>${escapeHtml(k)}</label><div class="extra-info-row"><input type="text" class="newMembreExtraInput" data-key="${escapeHtml(k)}"></div></div>`).join('')}</div>`;
           })()}
         </div>
@@ -90,7 +90,7 @@ export function renderMembres() {
         const isSortantsTab = AppState.membresSubTab === 'sortants';
         const scoped = isSortantsTab ? sortants : actifs;
         return `<div class="card-sub">${isSortantsTab
-          ? `${sortants.length} membre${sortants.length > 1 ? 's' : ''} sortant${sortants.length > 1 ? 's' : ''} — figurants, exclus des statistiques, du tableau de bord, des rapports et des exports`
+          ? `${sortants.length} membre${sortants.length > 1 ? 's' : ''} sortant${sortants.length > 1 ? 's' : ''} exclus des statistiques, du tableau de bord, des rapports et des exports`
           : `${actifs.length} au total${actifs.some(m => m.ap) ? ' · ' + actifs.filter(m => m.ap).length + ' membre(s) ponctuel(s) (AP)' : ''}`}</div>
       <div style="margin:12px 0 14px;">
         <input type="text" id="membreSearch" placeholder="Rechercher un membre (nom, prénom...)" value="${escapeHtml(AppState.membreSearch || '')}" style="width:100%;">
@@ -175,7 +175,7 @@ export function renderMembres() {
       <h3 class="card-title" style="color:var(--terracotta-dim);">Zone sensible</h3>
       <div class="card-sub">Réinitialise entièrement l’application : programmes, membres, séances et pointages. Votre nom de signataire est conservé.</div>
       <button class="btn" id="resetAllBtn" style="background:var(--terracotta);border-color:transparent;color:#fff;">Réinitialiser toutes les données</button>
-      <div class="card-sub" style="margin-top:16px;">Supprime tous les membres (permanents et ponctuels) et leurs pointages associés — retour à zéro membre, comme s’il n’y avait jamais eu d’import. Les programmes et les séances restent intacts.</div>
+      <div class="card-sub" style="margin-top:16px;">Supprime tous les membres (permanents et ponctuels) et leurs pointages associés. Retour à zéro membre, comme s’il n’y avait jamais eu d’import. Les programmes et les séances restent intacts.</div>
       <button class="btn btn-ghost" id="clearImportedDataBtn" style="border-color:var(--terracotta);color:var(--terracotta-dim);">Supprimer tous les membres</button>
     </div>
     `}
@@ -226,7 +226,7 @@ function renderImportZone() {
         <div style="font-size:11px;color:var(--ink-faint);margin-top:6px;">Affichage des ${Math.min(3, AppState.importRows.length)} première(s) ligne(s)</div>
       </div>
 
-      <p style="font-size:12px;color:var(--ink-faint);line-height:1.6;margin-top:14px;">Une fois importés, ces membres seront pointables dans tous les programmes déjà créés — et automatiquement dans ceux que vous créerez plus tard.</p>
+      <p style="font-size:12px;color:var(--ink-faint);line-height:1.6;margin-top:14px;">Une fois importés, ces membres seront pointables dans tous les programmes déjà créés et automatiquement dans ceux que vous créerez plus tard.</p>
       <div style="display:flex;gap:10px;margin-top:14px;">
         <button class="btn btn-primary" id="confirmImportBtn">Importer</button>
         <button class="btn btn-ghost" id="cancelImportBtn">Annuler</button>
@@ -353,7 +353,7 @@ export function attachMembresEvents() {
       const isAp = btn.dataset.ap === '1';
       const hint = document.getElementById('newMembreTypeHint');
       hint.textContent = isAp
-        ? 'Compté à part des effectifs permanents, uniquement sur les programmes choisis ci-dessous. Intégré définitivement à la base — et pointable partout — dès qu’il est pointé à plus de 6 séances réparties sur au moins 3 programmes.'
+        ? 'Compté à part des effectifs permanents, uniquement sur les programmes choisis ci-dessous. Intégré définitivement à la base et pointable partout dès qu’il est pointé à plus de 6 séances réparties sur au moins 3 programmes.'
         : 'Automatiquement pointable dans tous les programmes déjà créés et ceux à venir.';
       if (progsField) progsField.style.display = isAp ? '' : 'none';
       const extraPermanent = document.getElementById('newMembreExtraPermanent');
