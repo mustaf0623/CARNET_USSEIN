@@ -21,6 +21,7 @@ import { initSyncState, initSupabaseClient, startApp, reconcileSync, loadCachedA
 import { initUploadQueue, processUploadQueue } from './db/upload-queue.js';
 import { initInstallPrompt, registerServiceWorker } from './pwa.js';
 
+initInstallPrompt();
 registerServiceWorker();
 
 // Casse le cycle d'import : state.js est un module bas niveau qui ne peut pas
@@ -43,19 +44,39 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
       try {
         const { data: { session } } = await sb.auth.getSession();
         AppState.sbUser = session ? session.user : null;
-      } catch (e) { AppState.sb = null; sb = null; }
+      } catch (e) {
+        // CORRECTIF : ne plus détruire AppState.sb ici. getSession() peut
+        // rejeter simplement parce que le jeton d'accès a expiré et ne peut
+        // pas être rafraîchi hors ligne (TypeError: Load failed sous
+        // Safari) — ce n'est PAS une raison de perdre le client Supabase.
+        // Le nullifier empêchait ensuite loadCachedAccessContext() de
+        // s'exécuter (étape 2 ci-dessous) et cassait toute tentative de
+        // reconnexion ultérieure (reconcileSync vérifie AppState.sb).
+        AppState.sbUser = null;
+      }
     }
   }
 
   // 2) Contexte d'accès en cache (rôle, Sections, Section active, membre
-  // lié) — restauré AVANT de charger les données, pour savoir quelle
-  // Section charger localement à l'étape suivante. C'est ce qui permet à
-  // un super-admin/"pf" de retrouver hors ligne une Section déjà visitée.
-  if (AppState.sb && AppState.sbUser) await loadCachedAccessContext();
+  //    lié) — restauré AVANT de charger les données, pour savoir quelle
+  //    Section charger localement à l'étape suivante. C'est ce qui permet à
+  //    un super-admin/"pf" de retrouver hors ligne une Section déjà visitée.
+  //
+  //    CORRECTIF : on ne conditionne plus cet appel à AppState.sbUser. Cette
+  //    lecture ne fait qu'interroger IndexedDB (aucun besoin de session
+  //    valide ni de réseau) — or AppState.sbUser est justement `null` dans
+  //    le cas exact qu'on veut couvrir : réouverture hors ligne après
+  //    expiration du jeton. Avec l'ancienne condition, AppState.activeSectionId
+  //    restait vide, loadData() ci-dessous ne trouvait aucune clé locale, et
+  //    l'app se retrouvait avec un jeu de données vide (l'impression de
+  //    devoir « se reconnecter » alors que les données existent bien sur
+  //    l'appareil).
+  if (AppState.sb) await loadCachedAccessContext();
 
   // 3) Données locales de la Section active (si connue) + état de synchro.
   const localData = await loadData(AppState.activeSectionId);
   await initSyncState(!!localData);
+
   // Recharge les dépôts de documents laissés en attente lors d'une session
   // précédente (app fermée hors ligne avant reconnexion) — c'est le seul
   // cas qui a besoin d'une file dédiée, car il s'agit de vrais fichiers
@@ -72,6 +93,7 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
       if (regained && AppState.data) reconcileSync();
       if (regained) processUploadQueue();
     });
+
     // En cas de perte de réseau au moment précis du chargement, on retente
     // dès que la connexion revient plutôt que d'attendre indéfiniment.
     window.addEventListener('online', async () => {
@@ -79,7 +101,7 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
       try {
         const { data: { session } } = await AppState.sb.auth.getSession();
         const newUser = session ? session.user : null;
-        if (newUser && !AppState.sbUser) { AppState.sbUser = newUser; if (AppState.data) reconcileSync(); }
+        if (newUser) { AppState.sbUser = newUser; if (AppState.data) reconcileSync(); }
       } catch (e) { /* réessaiera au prochain événement online */ }
       // Le retour en ligne suffit à lui seul à retenter la file d'attente
       // des documents, même si la session était déjà valide (donc pas de
@@ -116,7 +138,4 @@ document.getElementById('syncBtn').addEventListener('click', () => reconcileSync
   // événement 'online' qui ne se déclenchera pas si la connexion était déjà
   // là dès l'ouverture de l'app.
   if (AppState.sb && AppState.sbUser) processUploadQueue();
-
-  initInstallPrompt();
-  registerServiceWorker();
 })();

@@ -52,7 +52,7 @@ export function render() {
         ${AppState.sbProfile?.role === 'super_admin' ? tabBtn('administration', ICONS.settings, 'Administration') : ''}
       </nav>
       <div class="sidebar-footer">
-        <div class="sidebar-org">${escapeHtml((AppState.sbSections.find(s => s.id === AppState.activeSectionId) || {}).nom || 'Commission Administrative')}${isPfRole(AppState.sbProfile?.role) ? ' <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:9.5px;vertical-align:middle;">lecture seule</span>' : ''}</div>
+        <div class="sidebar-org">${escapeHtml((AppState.sbSections.find(s => s.id === AppState.activeSectionId) || {}).nom || 'Commission Administrative')}${isPfRole(AppState.sbProfile?.role) ? ' <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:9.5px;vertical-align:middle;">lecture + pointage</span>' : ''}</div>
         ${(AppState.sbProfile?.role === 'super_admin' || isPfConseilRole(AppState.sbProfile?.role)) ? `<select id="sectionSwitcher" style="width:100%;margin:0 0 8px;">${AppState.sbSections.map(s => `<option value="${s.id}" ${s.id === AppState.activeSectionId ? 'selected' : ''}>${escapeHtml(s.nom)}</option>`).join('')}</select>` : ''}
         <div class="user-chip">
           <div class="avatar">${(AppState.data.profile.name || '?').trim()[0]?.toUpperCase() || '?'}</div>

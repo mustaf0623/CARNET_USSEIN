@@ -11,7 +11,7 @@ import { emptyRow, sessionOptionsByYear } from '../components/ui.js';
 
 export function renderPointage() {
   const d = AppState.data;
-  const isReadOnly = isPfRole(AppState.sbProfile?.role);
+  const isReadOnly = AppState.sbProfile?.role === 'utilisateur';
   if (!d.programmes.length) return `<div class="page-head"><div><div class="eyebrow">Registre</div><h1 class="page-title">Pointage</h1></div></div>
     <div class="card empty-state">${ICONS.pointage}<h3 style="color:var(--ink);margin:0 0 6px;">Aucun programme</h3><p>Créez d’abord un programme dans l’onglet Membres.</p></div>`;
   // Reprend le premier programme disponible si l'identifiant mémorisé est
@@ -84,7 +84,7 @@ export function renderPointage() {
         ` : ''}
       </div>
       ${(!isReadOnly && (membres.length || sortants.length)) ? `<div style="margin-top:20px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        ${AppState.pointageSessionId !== 'new' ? `<button class="btn btn-ghost" id="deleteSessionBtn" style="color:var(--terracotta);border-color:var(--terracotta-tint);">Supprimer cette séance</button>` : '<span></span>'}
+        ${AppState.pointageSessionId !== 'new' && !isPfRole(AppState.sbProfile?.role) ? `<button class="btn btn-ghost" id="deleteSessionBtn" style="color:var(--terracotta);border-color:var(--terracotta-tint);">Supprimer cette séance</button>` : '<span></span>'}
         <button class="btn btn-primary" id="saveSession">${ICONS.mark} Enregistrer le pointage</button>
       </div>` : ''}
     </div>
