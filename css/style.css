@@ -65,6 +65,7 @@
 .supervision-section-link:hover{text-decoration:underline;}
 .supervision-count{white-space:nowrap;padding-top:4px;}
 .supervision-message{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:22px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);color:var(--ink-dim);}
+.supervision-cache-notice{padding:10px 13px;margin:0 0 14px;border-left:3px solid var(--gold);background:var(--gold-tint);color:var(--ink-dim);font-size:11.5px;line-height:1.5;border-radius:0 var(--radius-sm) var(--radius-sm) 0;}
 .supervision-error{border-left:3px solid var(--terracotta);}
 .supervision-error strong{color:var(--ink);}
 @media(max-width:900px){.supervision-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}.supervision-chart-grid{grid-template-columns:1fr;}}

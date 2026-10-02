@@ -54,6 +54,7 @@ export const AppState = {
   adminUserActiveFilter: 'tous',
   adminUserVisibleCount: 50,
   supervisionData: null,
+  supervisionCacheInfo: null,
   supervisionLoading: false,
   supervisionError: '',
   supervisionPeriod: '12m',

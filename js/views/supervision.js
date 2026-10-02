@@ -1,8 +1,10 @@
 // Vue de supervision multi-Sections, réservée au super-administrateur.
 import { AppState } from '../state.js';
-import { escapeHtml } from '../config.js';
+import { escapeHtml, isNetworkError } from '../config.js';
+import { idbGet, idbSet } from '../db/indexeddb.js';
 
 const PAGE_SIZE = 1000;
+const SUPERVISION_CACHE_KEY = 'carnet-supervision-data';
 const COLORS = ['#3D765B', '#B45A3C', '#A9791E', '#42658A', '#8B5F83', '#63705A', '#C0782D', '#4D8584'];
 let charts = [];
 
@@ -18,11 +20,28 @@ async function fetchAll(table, columns, sectionIds) {
   }
 }
 
+async function readSupervisionCache() {
+  try { return await idbGet(SUPERVISION_CACHE_KEY); } catch (error) { return null; }
+}
+
+function applySupervisionCache(cache) {
+  if (!cache?.data) return false;
+  AppState.supervisionData = cache.data;
+  AppState.supervisionCacheInfo = { source: 'cache', fetchedAt: cache.fetchedAt, sectionIds: cache.sectionIds || [] };
+  return true;
+}
+
 async function loadData() {
   AppState.supervisionLoading = true;
   AppState.supervisionError = '';
   AppState.render();
   try {
+    if (!navigator.onLine) {
+      if (!applySupervisionCache(await readSupervisionCache())) {
+        AppState.supervisionError = 'Hors ligne et aucune copie de Supervision n’est encore enregistrée sur cet appareil. Ouvrez cet onglet une première fois avec une connexion.';
+      }
+      return;
+    }
     const sectionIds = AppState.sbSections.map(section => section.id);
     const [programmes, membres, sessions, pointages, documents, observations] = await Promise.all([
       fetchAll('programmes', 'id, section_id', sectionIds),
@@ -33,8 +52,18 @@ async function loadData() {
       fetchAll('observations', 'id, section_id, created_at', sectionIds),
     ]);
     AppState.supervisionData = { programmes, membres, sessions, pointages, documents, observations };
+    AppState.supervisionCacheInfo = { source: 'network', fetchedAt: new Date().toISOString(), sectionIds };
+    try {
+      await idbSet(SUPERVISION_CACHE_KEY, { data: AppState.supervisionData, fetchedAt: AppState.supervisionCacheInfo.fetchedAt, sectionIds });
+    } catch (error) { /* l’écran reste utilisable si le stockage local est indisponible */ }
   } catch (error) {
-    AppState.supervisionError = error?.message || 'Impossible de charger les données des Sections.';
+    if (!navigator.onLine || isNetworkError(error)) {
+      if (!applySupervisionCache(await readSupervisionCache())) {
+        AppState.supervisionError = 'Connexion indisponible et aucune copie locale de Supervision n’est disponible. Connectez-vous une fois pour la créer.';
+      }
+    } else {
+      AppState.supervisionError = error?.message || 'Impossible de charger les données des Sections.';
+    }
   } finally {
     AppState.supervisionLoading = false;
     AppState.render();
@@ -200,6 +229,11 @@ export function renderSupervision() {
   const period = AppState.supervisionPeriod || '12m';
   const selectedSection = AppState.supervisionSection || 'all';
   const { sections, monthly } = collectStats(AppState.supervisionData, period, selectedSection);
+  const cacheInfo = AppState.supervisionCacheInfo;
+  const cachedSectionCount = new Set(cacheInfo?.sectionIds || []).size;
+  const coverageNotice = (!navigator.onLine || cacheInfo?.source === 'cache')
+    ? `<div class="supervision-cache-notice" role="status">Hors ligne · copie enregistrée le ${cacheInfo?.fetchedAt ? new Date(cacheInfo.fetchedAt).toLocaleString('fr-FR') : 'date inconnue'} · ${cachedSectionCount} Section${cachedSectionCount === 1 ? '' : 's'} incluse${cachedSectionCount === 1 ? '' : 's'} lors du dernier chargement. Ces données peuvent être anciennes.</div>`
+    : '';
   const totalMembers = sections.reduce((sum, row) => sum + row.members, 0);
   const totalSessions = sections.reduce((sum, row) => sum + row.sessions.length, 0);
   const present = sections.reduce((sum, row) => sum + row.present, 0);
@@ -216,7 +250,7 @@ export function renderSupervision() {
     return `<tr><td><button class="supervision-section-link" data-section-id="${row.section.id}">${escapeHtml(row.section.nom)}</button></td><td>${row.members}</td><td>${row.programmes}</td><td>${row.sessions.length}</td><td>${rowRate === null ? '—' : rowRate + '%'}</td><td>${rowInterval ? Math.round(rowInterval[0]) + '–' + Math.round(rowInterval[1]) + '%' : '—'}</td><td>${row.documents}</td><td>${row.observations}</td><td>${lastSession ? new Date(lastSession + 'T00:00:00').toLocaleDateString('fr-FR') : '—'}</td></tr>`;
   }).join('');
 
-  return `<div class="page-head supervision-head"><div><div class="eyebrow">Pilotage multi-Sections</div><h1 class="page-title">Supervision</h1><p class="page-sub">Comparer l’activité et les tendances de présence.</p></div>
+  return `${coverageNotice}<div class="page-head supervision-head"><div><div class="eyebrow">Pilotage multi-Sections</div><h1 class="page-title">Supervision</h1><p class="page-sub">Comparer l’activité et les tendances de présence.</p></div>
       <div class="supervision-filters"><label class="field"><span>Période</span><select id="supervisionPeriod">${periodOptions}</select></label><label class="field"><span>Section</span><select id="supervisionSection">${sectionOptions}</select></label><button class="btn btn-ghost supervision-refresh" id="supervisionRefresh" title="Actualiser les données" aria-label="Actualiser les données">↻</button></div></div>
     <section class="supervision-kpis" aria-label="Indicateurs globaux">
       <article class="supervision-kpi"><span class="supervision-kpi-label">Sections suivies</span><strong>${sections.length}</strong><small>${selectedSection === 'all' ? 'ensemble du réseau' : 'Section sélectionnée'}</small></article>
