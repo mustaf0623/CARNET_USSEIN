@@ -144,11 +144,12 @@ function collectStats(data, period, selectedSection) {
   bySessionId.forEach(({ session, present, total }) => {
     if (!total) return;
     const key = weekStart(session.date);
-    if (!weekly.has(key)) weekly.set(key, { present: 0, total: 0, sessions: 0 });
+    if (!weekly.has(key)) weekly.set(key, { present: 0, total: 0, sessions: 0, lastDate: session.date });
     const week = weekly.get(key);
     week.present += present;
     week.total += total;
     week.sessions++;
+    if (session.date > week.lastDate) week.lastDate = session.date;
   });
   return { sections, monthly, weekly };
 }
@@ -157,15 +158,18 @@ function fitTrend(points) {
   if (points.length < 6) return null;
   const xs = points.map(point => point.x);
   const ys = points.map(point => point.y);
-  const meanX = xs.reduce((sum, value) => sum + value, 0) / xs.length;
-  const meanY = ys.reduce((sum, value) => sum + value, 0) / ys.length;
-  const sxx = xs.reduce((sum, value) => sum + (value - meanX) ** 2, 0);
+  const weights = points.map(point => point.total);
+  const sumWeight = weights.reduce((sum, value) => sum + value, 0);
+  const meanX = xs.reduce((sum, value, index) => sum + value * weights[index], 0) / sumWeight;
+  const meanY = ys.reduce((sum, value, index) => sum + value * weights[index], 0) / sumWeight;
+  const sxx = xs.reduce((sum, value, index) => sum + weights[index] * (value - meanX) ** 2, 0);
   if (!sxx) return null;
-  const slope = xs.reduce((sum, value, index) => sum + (value - meanX) * (ys[index] - meanY), 0) / sxx;
+  const slope = xs.reduce((sum, value, index) => sum + weights[index] * (value - meanX) * (ys[index] - meanY), 0) / sxx;
   const intercept = meanY - slope * meanX;
   const residuals = ys.map((value, index) => value - (intercept + slope * xs[index]));
-  const variance = residuals.reduce((sum, value) => sum + value * value, 0) / Math.max(1, points.length - 2);
-  return { meanX, intercept, slope, variance, count: points.length, sxx };
+  const variance = residuals.reduce((sum, value, index) => sum + weights[index] * value * value, 0) / Math.max(1, points.length - 2);
+  const averageWeight = sumWeight / weights.length;
+  return { meanX, intercept, slope, variance, count: points.length, sxx, sumWeight, averageWeight };
 }
 
 function studentCritical95(degreesOfFreedom) {
@@ -175,7 +179,7 @@ function studentCritical95(degreesOfFreedom) {
 
 function prediction(fit, x) {
   const estimate = fit.intercept + fit.slope * x;
-  const margin = studentCritical95(fit.count - 2) * Math.sqrt(fit.variance * (1 + 1 / fit.count + ((x - fit.meanX) ** 2 / fit.sxx)));
+  const margin = studentCritical95(fit.count - 2) * Math.sqrt(fit.variance * (1 / fit.averageWeight + 1 / fit.sumWeight + ((x - fit.meanX) ** 2 / fit.sxx)));
   return { estimate: Math.max(0, Math.min(100, estimate)), low: Math.max(0, estimate - margin), high: Math.min(100, estimate + margin) };
 }
 
@@ -263,10 +267,17 @@ function buildCharts() {
     x: weekIndex(key),
     y: value.present / value.total * 100,
     sessions: value.sessions,
+    total: value.total,
+    lastDate: value.lastDate,
   })).slice(-12);
-  const sessionCount = history.reduce((sum, point) => sum + point.sessions, 0);
-  if (history.length < 6 || sessionCount < 24) {
-    method.textContent = `Projection masquée : minimum 6 semaines et 24 séances pointées (actuellement ${history.length} semaines, ${sessionCount} séances).`;
+  const recentWeeks = history.slice(-6);
+  const recentSessionCount = recentWeeks.reduce((sum, point) => sum + point.sessions, 0);
+  const consecutiveWeeks = recentWeeks.length === 6 && recentWeeks.every((point, index) => index === 0 || point.x === recentWeeks[index - 1].x + 1);
+  const latestDate = recentWeeks.at(-1)?.lastDate;
+  const today = new Date().toISOString().slice(0, 10);
+  const daysSinceLatest = latestDate ? (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${latestDate}T00:00:00Z`)) / 86400000 : Infinity;
+  if (!consecutiveWeeks || recentSessionCount < 24 || daysSinceLatest < 0 || daysSinceLatest > 14) {
+    method.textContent = `Projection masquée : il faut 6 semaines consécutives, 24 séances pointées sur cette période et une dernière séance datant de moins de 15 jours (actuellement ${recentWeeks.length} semaines consécutives, ${recentSessionCount} séances).`;
     return;
   }
   const fit = fitTrend(history);
@@ -293,7 +304,7 @@ function buildCharts() {
     ] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 7, color: '#4A5578', font: { family: 'Manrope', size: 10 } } }, tooltip: { callbacks: { label: context => context.parsed.y == null ? '' : `${context.dataset.label} : ${Math.round(context.parsed.y)}%` } } }, scales: { y: { min: 0, max: 100, ticks: { callback: value => value + '%', color: '#8A8F72' }, grid: { color: 'rgba(28,37,65,0.08)' } }, x: { ticks: { color: '#4A5578', maxRotation: 0, autoSkip: true }, grid: { display: false } } } },
   }));
-  method.textContent = 'Régression linéaire sur les 12 dernières semaines renseignées; au moins 6 semaines et 24 séances. Bande de prédiction à 95 % selon Student. Projection indicative, non causale.';
+  method.textContent = 'Régression hebdomadaire pondérée par le nombre de pointages; fenêtre récente exigée. Intervalle de prédiction à 95 % selon Student, sous hypothèses de semaines indépendantes et comparables. Tendance indicative, non causale.';
 }
 
 export function attachSupervisionEvents() {
