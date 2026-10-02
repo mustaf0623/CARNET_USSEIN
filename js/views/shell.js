@@ -22,6 +22,7 @@ import { renderRapports, attachRapportsEvents } from './rapports.js';
 import { renderAmphitheatre, attachAmphitheatreEvents } from './amphitheatre.js';
 import { renderAdministration, attachAdministrationEvents } from './administration.js';
 import { renderObservations, attachObservationsEvents } from './observations.js';
+import { renderSupervision, attachSupervisionEvents } from './supervision.js';
 
 export function render() {
   const app = document.getElementById('app');
@@ -50,6 +51,7 @@ export function render() {
         ${tabBtn('amphitheatre', ICONS.amphi, 'Amphithéâtre')}
         ${AppState.sbProfile?.role !== 'utilisateur' ? tabBtn('observations', ICONS.observations, 'Observations') : ''}
         ${AppState.sbProfile?.role === 'super_admin' ? tabBtn('administration', ICONS.settings, 'Administration') : ''}
+        ${AppState.sbProfile?.role === 'super_admin' ? tabBtn('supervision', ICONS.dashboard, 'Supervision') : ''}
       </nav>
       <div class="sidebar-footer">
         <div class="sidebar-org">${escapeHtml((AppState.sbSections.find(s => s.id === AppState.activeSectionId) || {}).nom || 'Commission Administrative')}${isPfRole(AppState.sbProfile?.role) ? ' <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:9.5px;vertical-align:middle;">lecture + pointage</span>' : ''}</div>
@@ -194,6 +196,7 @@ function renderTab() {
   if (AppState.tab === 'amphitheatre') return renderAmphitheatre();
   if (AppState.tab === 'observations') return renderObservations();
   if (AppState.tab === 'administration' && AppState.sbProfile?.role === 'super_admin') return renderAdministration();
+  if (AppState.tab === 'supervision' && AppState.sbProfile?.role === 'super_admin') return renderSupervision();
   return '';
 }
 function attachTabEvents() {
@@ -204,4 +207,5 @@ function attachTabEvents() {
   if (AppState.tab === 'amphitheatre') attachAmphitheatreEvents();
   if (AppState.tab === 'observations') attachObservationsEvents();
   if (AppState.tab === 'administration') attachAdministrationEvents();
+  if (AppState.tab === 'supervision' && AppState.sbProfile?.role === 'super_admin') attachSupervisionEvents();
 }

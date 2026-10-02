@@ -53,6 +53,11 @@ export const AppState = {
   adminUserSectionFilter: 'toutes',
   adminUserActiveFilter: 'tous',
   adminUserVisibleCount: 50,
+  supervisionData: null,
+  supervisionLoading: false,
+  supervisionError: '',
+  supervisionPeriod: '12m',
+  supervisionSection: 'all',
 
   // ---- Session / synchronisation Supabase ----
   sb: null,

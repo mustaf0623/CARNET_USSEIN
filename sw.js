@@ -1,7 +1,7 @@
 // sw.js — Carnet
 // Stratégie : Stale-While-Revalidate pour les ressources de l'app,
 // + cache des assets externes utilisés (CDN, polices) et fallback navigation hors-ligne.
-const CACHE_NAME = 'carnet-v23';
+const CACHE_NAME = 'carnet-v24';
 const APP_SHELL_URL = new URL('./index.html', self.location.href).href;
 
 // Ces fichiers sont l'app elle-même : ils sont installés en mode fail-fast
@@ -40,6 +40,7 @@ const CORE_ASSETS = [
   './js/views/amphitheatre.js',
   './js/views/observations.js',
   './js/views/administration.js',
+  './js/views/supervision.js',
 ];
 
 // Assets externes référencés dans index.html — on les met en cache pour permettre
