@@ -51,7 +51,7 @@ export function render() {
         ${tabBtn('amphitheatre', ICONS.amphi, 'Amphithéâtre')}
         ${AppState.sbProfile?.role !== 'utilisateur' ? tabBtn('observations', ICONS.observations, 'Observations') : ''}
         ${AppState.sbProfile?.role === 'super_admin' ? tabBtn('administration', ICONS.settings, 'Administration') : ''}
-        ${AppState.sbProfile?.role === 'super_admin' ? tabBtn('supervision', ICONS.dashboard, 'Supervision') : ''}
+        ${AppState.sbProfile?.role === 'super_admin' ? tabBtn('supervision', ICONS.supervision, 'Supervision') : ''}
       </nav>
       <div class="sidebar-footer">
         <div class="sidebar-org">${escapeHtml((AppState.sbSections.find(s => s.id === AppState.activeSectionId) || {}).nom || 'Commission Administrative')}${isPfRole(AppState.sbProfile?.role) ? ' <span class="pill" style="background:var(--gold-tint);border-color:var(--gold);color:var(--gold);font-size:9.5px;vertical-align:middle;">lecture + pointage</span>' : ''}</div>
