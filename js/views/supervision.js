@@ -2,6 +2,7 @@
 import { AppState } from '../state.js';
 import { escapeHtml, isNetworkError } from '../config.js';
 import { idbGet, idbSet } from '../db/indexeddb.js';
+import { statCard } from '../components/ui.js';
 
 const PAGE_SIZE = 1000;
 const SUPERVISION_CACHE_KEY = 'carnet-supervision-data';
@@ -252,17 +253,17 @@ export function renderSupervision() {
 
   return `${coverageNotice}<div class="page-head supervision-head"><div><div class="eyebrow">Pilotage multi-Sections</div><h1 class="page-title">Supervision</h1><p class="page-sub">Comparer l’activité et les tendances de présence.</p></div>
       <div class="supervision-filters"><label class="field"><span>Période</span><select id="supervisionPeriod">${periodOptions}</select></label><label class="field"><span>Section</span><select id="supervisionSection">${sectionOptions}</select></label><button class="btn btn-ghost supervision-refresh" id="supervisionRefresh" title="Actualiser les données" aria-label="Actualiser les données">↻</button></div></div>
-    <section class="supervision-kpis" aria-label="Indicateurs globaux">
-      <article class="supervision-kpi"><span class="supervision-kpi-label">Sections suivies</span><strong>${sections.length}</strong><small>${selectedSection === 'all' ? 'ensemble du réseau' : 'Section sélectionnée'}</small></article>
-      <article class="supervision-kpi"><span class="supervision-kpi-label">Membres actifs</span><strong>${totalMembers.toLocaleString('fr-FR')}</strong><small>hors sortants et ponctuels</small></article>
-      <article class="supervision-kpi"><span class="supervision-kpi-label">Séances enregistrées</span><strong>${totalSessions.toLocaleString('fr-FR')}</strong><small>sur la période</small></article>
-      <article class="supervision-kpi supervision-kpi-rate"><span class="supervision-kpi-label">Présence observée</span><strong>${rate === null ? '—' : rate + '%'}</strong><small>${interval ? 'IC 95 % : ' + Math.round(interval[0]) + '–' + Math.round(interval[1]) + '%' : 'Aucun pointage sur cette période'}</small></article>
+    <section class="grid grid-4 supervision-kpis" aria-label="Indicateurs globaux">
+      ${statCard('Sections suivies', sections.length, selectedSection === 'all' ? 'ensemble du réseau' : 'Section sélectionnée', 'stat-gold')}
+      ${statCard('Membres actifs', totalMembers.toLocaleString('fr-FR'), 'hors sortants et ponctuels', 'stat-emerald')}
+      ${statCard('Séances enregistrées', totalSessions.toLocaleString('fr-FR'), 'sur la période', 'stat-gold')}
+      ${statCard('Présence observée', rate === null ? '—' : rate + '%', interval ? 'IC 95 % : ' + Math.round(interval[0]) + '–' + Math.round(interval[1]) + '%' : 'Aucun pointage sur cette période', 'stat-emerald')}
     </section>
-    <section class="supervision-chart-grid">
-      <article class="supervision-panel supervision-trend-panel"><div class="supervision-panel-head"><div><h2>Évolution mensuelle</h2><p>Taux calculé sur les pointages enregistrés chaque mois.</p></div><span class="supervision-unit">% présence</span></div><div class="supervision-chart"><canvas id="supervisionTrend" aria-label="Courbe mensuelle de présence"></canvas></div></article>
-      <article class="supervision-panel"><div class="supervision-panel-head"><div><h2>Tendance globale</h2><p>Projection courte sur les deux prochaines semaines.</p></div></div><div class="supervision-chart supervision-forecast-chart"><canvas id="supervisionForecast" aria-label="Projection de tendance et intervalle de prédiction"></canvas></div><p class="supervision-method" id="supervisionMethod"></p></article>
+    <section class="grid grid-2 supervision-chart-grid">
+      <article class="card supervision-panel supervision-trend-panel"><div class="supervision-panel-head"><div><h3 class="card-title">Évolution mensuelle</h3><p class="card-sub">Taux calculé sur les pointages enregistrés chaque mois.</p></div><span class="supervision-unit">% présence</span></div><div class="supervision-chart"><canvas id="supervisionTrend" aria-label="Courbe mensuelle de présence"></canvas></div></article>
+      <article class="card supervision-panel"><div class="supervision-panel-head"><div><h3 class="card-title">Tendance globale</h3><p class="card-sub">Projection courte sur les deux prochaines semaines.</p></div></div><div class="supervision-chart supervision-forecast-chart"><canvas id="supervisionForecast" aria-label="Projection de tendance et intervalle de prédiction"></canvas></div><p class="supervision-method" id="supervisionMethod"></p></article>
     </section>
-    <section class="supervision-panel supervision-table-panel"><div class="supervision-panel-head"><div><h2>Comparaison des Sections</h2><p>Taux de présence pondéré par le nombre de pointages; l’intervalle tient compte de leur volume.</p></div><span class="supervision-count">${sections.length} Sections</span></div><div class="supervision-table-scroll"><table class="supervision-table"><thead><tr><th>Section</th><th>Membres actifs</th><th>Programmes</th><th>Séances</th><th>Présence</th><th>IC 95 %</th><th>Dépôts Amphi</th><th>Observations</th><th>Dernière séance</th></tr></thead><tbody>${rows || '<tr><td colspan="9">Aucune Section disponible.</td></tr>'}</tbody></table></div><p class="supervision-footnote">Un intervalle large indique que le taux repose sur peu de pointages. Il décrit l’incertitude statistique, pas la qualité du suivi.</p></section>`;
+    <section class="card supervision-panel supervision-table-panel"><div class="supervision-panel-head"><div><h3 class="card-title">Comparaison des Sections</h3><p class="card-sub">Taux de présence pondéré par le nombre de pointages; l’intervalle tient compte de leur volume.</p></div><span class="supervision-count">${sections.length} Sections</span></div><div class="supervision-table-scroll"><table class="supervision-table"><thead><tr><th>Section</th><th>Membres actifs</th><th>Programmes</th><th>Séances</th><th>Présence</th><th>IC 95 %</th><th>Dépôts Amphi</th><th>Observations</th><th>Dernière séance</th></tr></thead><tbody>${rows || '<tr><td colspan="9">Aucune Section disponible.</td></tr>'}</tbody></table></div><p class="supervision-footnote">Un intervalle large indique que le taux repose sur peu de pointages. Il décrit l’incertitude statistique, pas la qualité du suivi.</p></section>`;
 }
 
 function buildCharts() {
@@ -311,6 +312,7 @@ function buildCharts() {
   const today = new Date().toISOString().slice(0, 10);
   const daysSinceLatest = latestDate ? (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${latestDate}T00:00:00Z`)) / 86400000 : Infinity;
   if (!consecutiveWeeks || recentSessionCount < 24 || daysSinceLatest < 0 || daysSinceLatest > 14) {
+    forecastCanvas.parentElement.classList.add('is-empty');
     method.textContent = `Projection masquée : il faut 6 semaines consécutives, 24 séances pointées sur cette période et une dernière séance datant de moins de 15 jours (actuellement ${recentWeeks.length} semaines consécutives, ${recentSessionCount} séances).`;
     return;
   }
