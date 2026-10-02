@@ -56,6 +56,18 @@ function monthName(key) {
   return new Date(`${key}-01T00:00:00`).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
 }
 
+function weekStart(dateString) {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - (date.getUTCDay() + 6) % 7);
+  return date.toISOString().slice(0, 10);
+}
+
+function weekIndex(week) { return Math.floor(Date.parse(`${week}T00:00:00Z`) / 604800000); }
+
+function weekLabel(week) {
+  return new Date(`${week}T00:00:00Z`).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+}
+
 function periodStart(period) {
   if (period === 'all') return '';
   if (period === 'year') return `${new Date().getFullYear()}-01-01`;
@@ -82,7 +94,6 @@ function collectStats(data, period, selectedSection) {
   const documents = data.documents.filter(row => includesSection(row.section_id) && (!start || row.created_at.slice(0, 10) >= start));
   const observations = data.observations.filter(row => includesSection(row.section_id) && (!start || row.created_at.slice(0, 10) >= start));
   const sessions = data.sessions.filter(row => includesSection(row.section_id) && (!start || row.date >= start));
-  const sessionMap = new Map(sessions.map(row => [row.id, row]));
   const sections = AppState.sbSections.filter(section => includesSection(section.id)).map(section => ({
     section,
     members: members.filter(row => row.section_id === section.id && !row.ap && !row.sortant_since).length,
@@ -95,28 +106,34 @@ function collectStats(data, period, selectedSection) {
     monthly: new Map(),
   }));
   const byId = new Map(sections.map(row => [row.section.id, row]));
+  const bySessionId = new Map();
 
   sessions.forEach(session => {
     const key = session.date.slice(0, 7);
     const target = byId.get(session.section_id);
     if (target && !target.monthly.has(key)) target.monthly.set(key, { present: 0, total: 0, sessions: 0 });
     if (target) target.monthly.get(key).sessions++;
+    bySessionId.set(session.id, { session, present: 0, total: 0 });
   });
   data.pointages.forEach(pointage => {
-    const session = sessionMap.get(pointage.session_id);
+    const sessionStats = bySessionId.get(pointage.session_id);
+    const session = sessionStats?.session;
     const target = session && byId.get(session.section_id);
     if (!target) return;
     const key = session.date.slice(0, 7);
     const month = target.monthly.get(key);
     target.total++;
     month.total++;
+    sessionStats.total++;
     if (pointage.statut === 'present') {
       target.present++;
       month.present++;
+      sessionStats.present++;
     }
   });
 
   const monthly = new Map();
+  const weekly = new Map();
   sections.forEach(row => row.monthly.forEach((value, key) => {
     if (!monthly.has(key)) monthly.set(key, { present: 0, total: 0, sessions: 0 });
     const total = monthly.get(key);
@@ -124,7 +141,16 @@ function collectStats(data, period, selectedSection) {
     total.total += value.total;
     total.sessions += value.sessions;
   }));
-  return { sections, monthly };
+  bySessionId.forEach(({ session, present, total }) => {
+    if (!total) return;
+    const key = weekStart(session.date);
+    if (!weekly.has(key)) weekly.set(key, { present: 0, total: 0, sessions: 0 });
+    const week = weekly.get(key);
+    week.present += present;
+    week.total += total;
+    week.sessions++;
+  });
+  return { sections, monthly, weekly };
 }
 
 function fitTrend(points) {
@@ -142,9 +168,14 @@ function fitTrend(points) {
   return { meanX, intercept, slope, variance, count: points.length, sxx };
 }
 
+function studentCritical95(degreesOfFreedom) {
+  const criticalValues = [0, 0, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042];
+  return criticalValues[degreesOfFreedom] || 1.96;
+}
+
 function prediction(fit, x) {
   const estimate = fit.intercept + fit.slope * x;
-  const margin = 1.96 * Math.sqrt(fit.variance * (1 + 1 / fit.count + ((x - fit.meanX) ** 2 / fit.sxx)));
+  const margin = studentCritical95(fit.count - 2) * Math.sqrt(fit.variance * (1 + 1 / fit.count + ((x - fit.meanX) ** 2 / fit.sxx)));
   return { estimate: Math.max(0, Math.min(100, estimate)), low: Math.max(0, estimate - margin), high: Math.min(100, estimate + margin) };
 }
 
@@ -191,7 +222,7 @@ export function renderSupervision() {
     </section>
     <section class="supervision-chart-grid">
       <article class="supervision-panel supervision-trend-panel"><div class="supervision-panel-head"><div><h2>Évolution mensuelle</h2><p>Taux calculé sur les pointages enregistrés chaque mois.</p></div><span class="supervision-unit">% présence</span></div><div class="supervision-chart"><canvas id="supervisionTrend" aria-label="Courbe mensuelle de présence"></canvas></div></article>
-      <article class="supervision-panel"><div class="supervision-panel-head"><div><h2>Tendance globale</h2><p>Projection linéaire sur les trois prochains mois.</p></div></div><div class="supervision-chart supervision-forecast-chart"><canvas id="supervisionForecast" aria-label="Projection de tendance et intervalle de prédiction"></canvas></div><p class="supervision-method" id="supervisionMethod"></p></article>
+      <article class="supervision-panel"><div class="supervision-panel-head"><div><h2>Tendance globale</h2><p>Projection courte sur les deux prochaines semaines.</p></div></div><div class="supervision-chart supervision-forecast-chart"><canvas id="supervisionForecast" aria-label="Projection de tendance et intervalle de prédiction"></canvas></div><p class="supervision-method" id="supervisionMethod"></p></article>
     </section>
     <section class="supervision-panel supervision-table-panel"><div class="supervision-panel-head"><div><h2>Comparaison des Sections</h2><p>Taux de présence pondéré par le nombre de pointages; l’intervalle tient compte de leur volume.</p></div><span class="supervision-count">${sections.length} Sections</span></div><div class="supervision-table-scroll"><table class="supervision-table"><thead><tr><th>Section</th><th>Membres actifs</th><th>Programmes</th><th>Séances</th><th>Présence</th><th>IC 95 %</th><th>Dépôts Amphi</th><th>Observations</th><th>Dernière séance</th></tr></thead><tbody>${rows || '<tr><td colspan="9">Aucune Section disponible.</td></tr>'}</tbody></table></div><p class="supervision-footnote">Un intervalle large indique que le taux repose sur peu de pointages. Il décrit l’incertitude statistique, pas la qualité du suivi.</p></section>`;
 }
@@ -200,7 +231,7 @@ function buildCharts() {
   charts.forEach(chart => chart.destroy());
   charts = [];
   if (!window.Chart || !AppState.supervisionData) return;
-  const { sections, monthly } = collectStats(AppState.supervisionData, AppState.supervisionPeriod || '12m', AppState.supervisionSection || 'all');
+  const { sections, monthly, weekly } = collectStats(AppState.supervisionData, AppState.supervisionPeriod || '12m', AppState.supervisionSection || 'all');
   const trendCanvas = document.getElementById('supervisionTrend');
   const keys = [...monthly.keys()].sort();
   if (trendCanvas) {
@@ -227,20 +258,28 @@ function buildCharts() {
   const forecastCanvas = document.getElementById('supervisionForecast');
   const method = document.getElementById('supervisionMethod');
   if (!forecastCanvas) return;
-  const history = keys.map(key => {
-    const value = monthly.get(key);
-    return value?.total ? { key, x: monthIndex(key), y: value.present / value.total * 100 } : null;
-  }).filter(Boolean).slice(-12);
+  const history = [...weekly.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => ({
+    key,
+    x: weekIndex(key),
+    y: value.present / value.total * 100,
+    sessions: value.sessions,
+  })).slice(-12);
+  const sessionCount = history.reduce((sum, point) => sum + point.sessions, 0);
+  if (history.length < 6 || sessionCount < 24) {
+    method.textContent = `Projection masquée : minimum 6 semaines et 24 séances pointées (actuellement ${history.length} semaines, ${sessionCount} séances).`;
+    return;
+  }
   const fit = fitTrend(history);
   if (!fit) {
-    method.textContent = 'Prévision masquée : au moins six mois avec des pointages sont nécessaires.';
+    method.textContent = 'Projection indisponible : les semaines observées ne permettent pas d’estimer une tendance.';
     return;
   }
   const first = history[0].x;
   const last = history[history.length - 1].x;
-  const chartIndexes = Array.from({ length: Math.max(1, last - first + 4) }, (_, index) => first + index);
-  const labels = chartIndexes.map(monthNameFromIndex);
-  const observed = chartIndexes.map(index => monthly.get(monthKey(index))?.total ? monthly.get(monthKey(index)).present / monthly.get(monthKey(index)).total * 100 : null);
+  const chartIndexes = Array.from({ length: Math.max(1, last - first + 3) }, (_, index) => first + index);
+  const labels = chartIndexes.map(index => weekLabel(new Date(index * 604800000).toISOString().slice(0, 10)));
+  const observedByWeek = new Map(history.map(point => [point.x, point.y]));
+  const observed = chartIndexes.map(index => observedByWeek.get(index) ?? null);
   const projected = chartIndexes.map(index => index > last ? prediction(fit, index).estimate : null);
   const lower = chartIndexes.map(index => index > last ? prediction(fit, index).low : null);
   const upper = chartIndexes.map(index => index > last ? prediction(fit, index).high : null);
@@ -254,10 +293,8 @@ function buildCharts() {
     ] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 7, color: '#4A5578', font: { family: 'Manrope', size: 10 } } }, tooltip: { callbacks: { label: context => context.parsed.y == null ? '' : `${context.dataset.label} : ${Math.round(context.parsed.y)}%` } } }, scales: { y: { min: 0, max: 100, ticks: { callback: value => value + '%', color: '#8A8F72' }, grid: { color: 'rgba(28,37,65,0.08)' } }, x: { ticks: { color: '#4A5578', maxRotation: 0, autoSkip: true }, grid: { display: false } } } },
   }));
-  method.textContent = 'Régression linéaire sur les 12 derniers mois renseignés; bande de prédiction à 95 % selon une approximation normale. Projection indicative, non causale.';
+  method.textContent = 'Régression linéaire sur les 12 dernières semaines renseignées; au moins 6 semaines et 24 séances. Bande de prédiction à 95 % selon Student. Projection indicative, non causale.';
 }
-
-function monthNameFromIndex(index) { return monthName(monthKey(index)); }
 
 export function attachSupervisionEvents() {
   if (!AppState.supervisionData && !AppState.supervisionLoading && !AppState.supervisionError) {
