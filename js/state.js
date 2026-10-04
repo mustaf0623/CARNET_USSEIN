@@ -59,6 +59,7 @@ export const AppState = {
   supervisionError: '',
   supervisionPeriod: '12m',
   supervisionSection: 'all',
+  supervisionProgramme: 'all',
 
   // ---- Session / synchronisation Supabase ----
   sb: null,

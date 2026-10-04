@@ -8,10 +8,10 @@ import { programStats, sessionStats } from '../domain/stats.js';
 import { memberInProgramme, isSortant } from '../domain/membres.js';
 
 // Génère un PDF tabulaire (colonnes bornées et adaptées au contenu, police
-// adaptative, pagination automatique avec en-tête répété) pour l'export de
-// membres. Les valeurs très longues (liens, etc.) sont raccourcies pour le
-// PDF uniquement — l'Excel garde toujours la valeur complète.
-export function buildExportPdf(rows) {
+// adaptative, pagination automatique avec en-tête répété). Les valeurs très
+// longues (liens, etc.) sont raccourcies pour le PDF uniquement — l'Excel
+// garde toujours la valeur complète.
+export function buildExportPdf(rows, { title = 'Carnet — Export des membres', description, filename } = {}) {
   const { jsPDF } = window.jspdf;
   const headers = Object.keys(rows[0] || {});
   const landscape = headers.length > 5;
@@ -66,10 +66,11 @@ export function buildExportPdf(rows) {
   }
 
   doc.setFont('times', 'bold'); doc.setFontSize(15); doc.setTextColor(...ink);
-  doc.text('Carnet — Export des membres', margin, y); y += 7;
+  doc.text(title, margin, y); y += 7;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...faint);
-  doc.text(`${rows.length} membre${rows.length > 1 ? 's' : ''} — généré le ${fmtDate(todayISO())} à ${nowTime()}`, margin, y);
-  y += 6;
+  const descriptionLines = doc.splitTextToSize(description || `${rows.length} membre${rows.length > 1 ? 's' : ''} — généré le ${fmtDate(todayISO())} à ${nowTime()}`, contentW);
+  doc.text(descriptionLines, margin, y);
+  y += Math.max(6, descriptionLines.length * 4);
   drawHeaderRow();
 
   displayRows.forEach((row, idx) => {
@@ -86,7 +87,7 @@ export function buildExportPdf(rows) {
     y += rowH;
   });
 
-  doc.save(`carnet-export-membres-${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(filename || `carnet-export-membres-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 // Convertit un fichier image en un blob PDF d'une page (utilisé par le dépôt

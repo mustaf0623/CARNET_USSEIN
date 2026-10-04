@@ -45,16 +45,22 @@
 .supervision-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px;}
 .supervision-panel-head .card-sub{margin-bottom:0;}
 .supervision-chart{height:280px;position:relative;}
-.supervision-forecast-chart{height:280px;}
-.supervision-forecast-chart.is-empty{height:auto;min-height:0;}
-.supervision-forecast-chart.is-empty canvas{display:none;}
 .supervision-method,.supervision-footnote{font-size:10.5px;line-height:1.55;color:var(--ink-faint);margin:10px 0 0;}
 .supervision-table-scroll{overflow-x:auto;}
-.supervision-table{width:100%;border-collapse:collapse;min-width:980px;font-size:12px;}
+.supervision-table{width:100%;border-collapse:collapse;min-width:900px;font-size:12px;}
 .supervision-table th{text-align:left;padding:10px 9px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:9px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--line-strong);white-space:nowrap;}
 .supervision-table td{padding:11px 9px;border-bottom:1px solid var(--line);white-space:nowrap;}
 .supervision-table tbody tr:last-child td{border-bottom:0;}
 .supervision-table td:not(:first-child){font-family:'IBM Plex Mono',monospace;font-size:11px;}
+.supervision-table .supervision-rate-cell{min-width:225px;white-space:normal;}
+.supervision-rate-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;}
+.supervision-rate-head strong{font-size:16px;color:var(--emerald);font-variant-numeric:tabular-nums;}
+.supervision-rate-head span,.supervision-rate-detail,.supervision-rate-empty{font-size:10px;color:var(--ink-faint);font-family:'Manrope',sans-serif;}
+.supervision-rate-bar{height:5px;margin:6px 0 4px;background:var(--paper-2);border-radius:999px;overflow:hidden;}
+.supervision-rate-bar span{display:block;height:100%;background:var(--emerald);border-radius:inherit;}
+.supervision-rate-detail{display:block;}
+.supervision-report-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 0;margin-bottom:8px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:11px;line-height:1.5;color:var(--ink-faint);}
+.supervision-report-actions>div{display:flex;gap:8px;flex-wrap:wrap;}
 .supervision-section-link{border:0;padding:0;background:none;color:var(--emerald-dim);font-weight:800;text-align:left;}
 .supervision-section-link:hover{text-decoration:underline;}
 .supervision-count,.supervision-unit{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);white-space:nowrap;}
@@ -63,7 +69,7 @@
 .supervision-cache-notice{padding:10px 13px;margin:0 0 14px;border-left:3px solid var(--gold);background:var(--gold-tint);color:var(--ink-dim);font-size:11.5px;line-height:1.5;border-radius:0 var(--radius-sm) var(--radius-sm) 0;}
 .supervision-error{border-left:3px solid var(--terracotta);}
 .supervision-error strong{color:var(--ink);}
-@media(max-width:560px){.supervision-head{align-items:stretch;flex-direction:column;}.supervision-filters{display:grid;grid-template-columns:1fr 1fr;}.supervision-filters .field{min-width:0;}.supervision-refresh{width:100%;grid-column:1/-1;}.supervision-panel{padding:16px;}.supervision-chart,.supervision-forecast-chart:not(.is-empty){height:250px;}.supervision-panel-head{gap:8px;}}
+@media(max-width:560px){.supervision-head{align-items:stretch;flex-direction:column;}.supervision-filters{display:grid;grid-template-columns:1fr 1fr;}.supervision-filters .field{min-width:0;}.supervision-programme-filter,.supervision-refresh{width:100%;grid-column:1/-1;}.supervision-panel{padding:16px;}.supervision-chart{height:250px;}.supervision-panel-head{gap:8px;}.supervision-report-actions,.supervision-report-actions>div{align-items:stretch;flex-direction:column;}.supervision-report-actions .btn{width:100%;}}
 *{box-sizing:border-box;}
 html,body{height:100%;}
 html{ background:var(--paper); }
