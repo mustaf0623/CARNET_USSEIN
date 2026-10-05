@@ -46,6 +46,11 @@
 .supervision-panel-head .card-sub{margin-bottom:0;}
 .supervision-chart{height:280px;position:relative;}
 .supervision-method,.supervision-footnote{font-size:10.5px;line-height:1.55;color:var(--ink-faint);margin:10px 0 0;}
+.supervision-signals{margin-bottom:16px;}
+.supervision-signals ul{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:0;padding:0;list-style:none;}
+.supervision-signals li{display:flex;flex-direction:column;gap:3px;padding:11px 13px;border-left:3px solid var(--gold);border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:var(--gold-tint);}
+.supervision-signals li strong{color:var(--ink-dim);font-size:11px;}
+.supervision-signals li span{color:var(--ink-faint);font-size:10px;line-height:1.4;}
 .supervision-table-scroll{overflow-x:auto;}
 .supervision-table{width:100%;border-collapse:collapse;min-width:900px;font-size:12px;}
 .supervision-table th{text-align:left;padding:10px 9px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:9px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--line-strong);white-space:nowrap;}
