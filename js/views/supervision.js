@@ -86,47 +86,6 @@ async function loadData() {
 
 export { loadData as loadSupervisionData };
 
-function normalizeCouncilMember(row) {
-  return {
-    id: row.id,
-    nom: row.nom || '',
-    prenom: row.prenom || '',
-    sexe: row.sexe || '',
-    programmeIds: row.programme_ids || row.programmeIds || [],
-    allProgrammes: !!(row.all_programmes ?? row.allProgrammes),
-    ap: !!row.ap,
-    extra: row.extra || {},
-    sortantSince: row.sortant_since || row.sortantSince || null,
-  };
-}
-
-async function readCachedSectionMembers(sectionId) {
-  if (AppState.activeSectionId === sectionId && AppState.data?.membres) return AppState.data.membres;
-  try {
-    const councilCache = await idbGet('carnet-council-roster:' + sectionId);
-    if (Array.isArray(councilCache)) return councilCache;
-    const cached = await idbGet('carnet-data:' + sectionId);
-    return Array.isArray(cached?.membres) ? cached.membres : null;
-  } catch (error) { return null; }
-}
-
-export async function loadCouncilRoster(sectionId) {
-  if (!sectionId) return [];
-  if (navigator.onLine && AppState.sb) {
-    try {
-      const rows = await fetchAll('membres', 'id, section_id, nom, prenom, sexe, programme_ids, all_programmes, ap, extra, sortant_since', [sectionId]);
-      const members = rows.map(normalizeCouncilMember);
-      try { await idbSet('carnet-council-roster:' + sectionId, members); } catch (error) { /* lecture disponible sans cache */ }
-      return members;
-    } catch (error) {
-      if (!isNetworkError(error)) throw error;
-    }
-  }
-  const cachedMembers = await readCachedSectionMembers(sectionId);
-  if (cachedMembers) return cachedMembers;
-  throw new Error('Le répertoire détaillé de cette Section n’est pas disponible hors ligne. Consultez-le une première fois avec une connexion.');
-}
-
 function monthIndex(value) {
   const [year, month] = value.split('-').map(Number);
   return year * 12 + month - 1;
@@ -248,29 +207,6 @@ function collectStats(data, period, selectedSection, selectedProgramme) {
   });
 
   return { sections, programmes };
-}
-
-export function getCouncilSummary(period) {
-  if (!AppState.supervisionData) return null;
-  const data = AppState.supervisionData;
-  const { sections } = collectStats(data, period || '12m', 'all', 'all');
-  const membersBySection = new Map(AppState.sbSections.map(section => [section.id, []]));
-  data.membres.forEach(member => membersBySection.get(member.section_id)?.push(member));
-  return sections.map(row => {
-    const members = membersBySection.get(row.section.id) || [];
-    const active = members.filter(member => !member.ap && !member.sortant_since);
-    return {
-      ...row,
-      apMembers: members.filter(member => member.ap && !member.sortant_since).length,
-      sortants: members.filter(member => !!member.sortant_since).length,
-      men: active.filter(member => member.sexe === 'H').length,
-      women: active.filter(member => member.sexe === 'F').length,
-      interval: wilsonInterval(row.present, row.total),
-      attendanceRate: row.total ? Math.round(row.present / row.total * 100) : null,
-      coverage: row.sessions.length ? Math.round(row.pointedSessions.size / row.sessions.length * 100) : null,
-      lastSession: row.sessions.map(session => session.date).sort().at(-1) || '',
-    };
-  });
 }
 
 function reportPeriodLabel(period) {

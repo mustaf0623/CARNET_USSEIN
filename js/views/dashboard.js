@@ -3,7 +3,6 @@ import { AppState } from '../state.js';
 import { escapeHtml, ICONS } from '../config.js';
 import { scopedStats, programStats, sessionStats, getAvailableYears, periodMatches } from '../domain/stats.js';
 import { statCard, statCardSplit, emptyRow } from '../components/ui.js';
-import { renderCouncilToggleButton, canAccessCouncilView } from './council-dashboard.js';
 
 export function renderDashboard() {
   const d = AppState.data;
@@ -55,7 +54,6 @@ export function renderDashboard() {
         <p class="page-sub">Comportement des données de présence filtrable par programme et par année.</p>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-        ${canAccessCouncilView() ? renderCouncilToggleButton() : ''}
         <div class="field">
           <label>Année</label>
           <select id="dashYearFilter">${yearOptions}</select>
@@ -128,11 +126,6 @@ const centerTextPlugin = {
 let hfChartInst = null, partChartInst = null, trendChartInst = null;
 export function attachDashboardEvents() {
   const d = AppState.data;
-  const councilBtn = document.getElementById('dashboardCouncilBtn');
-  if (councilBtn) councilBtn.addEventListener('click', () => {
-    AppState.dashboardMode = 'council';
-    AppState.render();
-  });
 
   const filterSel = document.getElementById('dashFilter');
   if (filterSel) filterSel.addEventListener('change', e => { AppState.dashProgFilter = e.target.value; AppState.render(); });

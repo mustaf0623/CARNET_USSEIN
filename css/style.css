@@ -228,24 +228,6 @@ main{ flex:1; min-width:0; padding:34px 42px 60px; max-width:1180px; background:
 .btn-ghost{ background:transparent; border-color:var(--line-strong); color:var(--ink-dim); }
 .btn-ghost:hover{ background:var(--card-2); color:var(--ink); }
 .btn-sm{ padding:7px 12px; font-size:12.5px; }
-#dashboardCouncilBtn,
-#closeCouncilViewBtn,
-#closeCouncilRoster{
-  border-color:rgba(61,118,91,0.28);
-  background:rgba(61,118,91,0.08);
-  color:var(--emerald);
-}
-#dashboardCouncilBtn:hover,
-#closeCouncilViewBtn:hover,
-#closeCouncilRoster:hover{
-  background:rgba(61,118,91,0.14);
-  color:var(--emerald-dim);
-}
-.council-head-controls{
-  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-  justify-content:flex-end;
-}
-.council-page-head{ align-items:center; }
 .btn[disabled]{ opacity:0.45; cursor:not-allowed; transform:none !important; }
 .btn svg{ width:14px; height:14px; }
 
