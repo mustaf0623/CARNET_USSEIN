@@ -8,6 +8,7 @@ import { getCouncilSummary, loadCouncilRoster, loadSupervisionData } from './sup
 
 const CHART_COLORS = ['#3D765B', '#B45A3C', '#A9791E', '#42658A', '#8B5F83', '#63705A', '#C0782D', '#4D8584'];
 let councilChart = null;
+let councilGenderChart = null;
 
 export function canAccessCouncilView() {
   return AppState.sbProfile?.role === 'super_admin';
@@ -94,6 +95,8 @@ export function renderCouncilDashboard() {
   const totalActive = sections.reduce((sum, row) => sum + row.members, 0);
   const totalAp = sections.reduce((sum, row) => sum + row.apMembers, 0);
   const totalSortants = sections.reduce((sum, row) => sum + row.sortants, 0);
+  const totalMen = sections.reduce((sum, row) => sum + row.men, 0);
+  const totalWomen = sections.reduce((sum, row) => sum + row.women, 0);
   const present = sections.reduce((sum, row) => sum + row.present, 0);
   const totalPointages = sections.reduce((sum, row) => sum + row.total, 0);
   const totalSessions = sections.reduce((sum, row) => sum + row.sessions.length, 0);
@@ -119,7 +122,12 @@ export function renderCouncilDashboard() {
     </section>
     <section class="grid grid-2 council-analytics">
       <article class="card"><h3 class="card-title">Présence mensuelle</h3><p class="card-sub">Taux agrégé, pondéré par les pointages de toutes les Sections.</p><div class="council-chart"><canvas id="councilTrend" aria-label="Évolution mensuelle de la présence par Section"></canvas></div></article>
-      <article class="card"><h3 class="card-title">Comparaison des Sections</h3><p class="card-sub">Les taux doivent être lus avec leur volume de pointages et le nombre de séances.</p><div class="council-table-scroll"><table class="data-table council-summary-table"><thead><tr><th>Section</th><th>Actifs</th><th>H / F</th><th>AP</th><th>Sortants</th><th>Prog.</th><th>Séances</th><th>Présence · IC 95 %</th><th>Dernière séance</th></tr></thead><tbody>${sectionRows || '<tr><td colspan="9">Aucune Section disponible.</td></tr>'}</tbody></table></div></article>
+      <article class="card"><h3 class="card-title">Répartition Hommes / Femmes</h3><p class="card-sub">Membres actifs permanents, hors AP et sortants.</p><div class="council-chart"><canvas id="councilGenderChart" aria-label="Répartition Hommes / Femmes dans le Conseil"></canvas></div></article>
+    </section>
+    <section class="card" style="margin-top:16px;">
+      <h3 class="card-title">Comparaison des Sections</h3>
+      <p class="card-sub">Les taux doivent être lus avec leur volume de pointages et le nombre de séances.</p>
+      <div class="council-table-scroll"><table class="data-table council-summary-table"><thead><tr><th>Section</th><th>Actifs</th><th>H / F</th><th>AP</th><th>Sortants</th><th>Prog.</th><th>Séances</th><th>Présence · IC 95 %</th><th>Dernière séance</th></tr></thead><tbody>${sectionRows || '<tr><td colspan="9">Aucune Section disponible.</td></tr>'}</tbody></table></div>
     </section>
     ${detail}`;
 }
@@ -160,6 +168,55 @@ function buildCouncilChart() {
     type: 'line',
     data: { labels: months.map(monthLabel), datasets },
     options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 7, color: '#4A5578', font: { family: 'Manrope', size: 11 } } }, tooltip: { callbacks: { label: context => `${context.dataset.label} : ${context.parsed.y}%` } } }, scales: { y: { min: 0, max: 100, ticks: { callback: value => value + '%', color: '#8A8F72' }, grid: { color: 'rgba(28,37,65,0.08)' } }, x: { ticks: { color: '#4A5578', maxRotation: 0, autoSkip: true }, grid: { display: false } } } },
+  });
+}
+
+function buildCouncilGenderChart() {
+  if (councilGenderChart) { councilGenderChart.destroy(); councilGenderChart = null; }
+  const canvas = document.getElementById('councilGenderChart');
+  if (!canvas || !window.Chart) return;
+  const sections = getCouncilSummary(AppState.councilPeriod || '12m') || [];
+  const totalMen = sections.reduce((sum, row) => sum + row.men, 0);
+  const totalWomen = sections.reduce((sum, row) => sum + row.women, 0);
+  const values = [totalMen, totalWomen];
+  const hasData = values.some(value => value > 0);
+  if (!hasData) return;
+  const goldGrad = canvas.getContext('2d').createLinearGradient(0, 0, 0, 220);
+  goldGrad.addColorStop(0, '#E0AC2E');
+  goldGrad.addColorStop(1, '#B87A0C');
+  const emeraldGrad = canvas.getContext('2d').createLinearGradient(0, 0, 0, 220);
+  emeraldGrad.addColorStop(0, '#2CC28E');
+  emeraldGrad.addColorStop(1, '#3D5540');
+  councilGenderChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: ['Hommes', 'Femmes'],
+      datasets: [{
+        data: values,
+        backgroundColor: [goldGrad, emeraldGrad],
+        borderColor: '#FFFFFF',
+        borderWidth: 4,
+        hoverOffset: 12,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#1C2541', usePointStyle: true, pointStyle: 'circle', padding: 16, font: { family: 'Manrope', size: 12, weight: 600 } } },
+        tooltip: {
+          backgroundColor: '#141B33',
+          titleColor: '#EEF2E6',
+          bodyColor: '#EEF2E6',
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            label: (context) => ` ${context.label} : ${context.parsed} (${Math.round(context.parsed / Math.max(values.reduce((a, b) => a + b, 0), 1) * 100)}%)`
+          }
+        }
+      }
+    }
   });
 }
 
@@ -216,4 +273,5 @@ export function attachCouncilDashboardEvents() {
     return;
   }
   buildCouncilChart();
+  buildCouncilGenderChart();
 }
