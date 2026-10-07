@@ -98,16 +98,6 @@ export function sessionStats(data, sessionId) {
   return { present, total, tauxPresence: total ? Math.round((present / total) * 100) : 0 };
 }
 
-export function wilsonInterval(successes, total) {
-  if (!total) return null;
-  const z = 1.96;
-  const rate = successes / total;
-  const denominator = 1 + z * z / total;
-  const center = (rate + z * z / (2 * total)) / denominator;
-  const margin = z * Math.sqrt((rate * (1 - rate) + z * z / (4 * total)) / total) / denominator;
-  return [Math.max(0, center - margin) * 100, Math.min(1, center + margin) * 100];
-}
-
 // Statistiques globales, filtrables par programme ('global' = tous) et par année ('toutes' = toutes)
 export function scopedStats(data, progFilter, yearFilter) {
   yearFilter = yearFilter || 'toutes';

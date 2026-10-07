@@ -1,0 +1,4 @@
+.vscode/
+identifiants mailgun.txt
+*.log
+.DS_Store

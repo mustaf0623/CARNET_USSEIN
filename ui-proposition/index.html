@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carnet — Proposition UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500&family=Spectral:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --indigo:#0F1A3A;
+  --indigo-2:#17244F;
+  --indigo-ink:#1E3A8A;
+  --laterite:#C45C2A;
+  --mangrove:#1F6B4A;
+  --laiton:#C9A227;
+  --os:#F3EDE3;
+  --os-2:#E8E0D2;
+  --encre:#12151A;
+  --encre-dim:#4A4F5C;
+  --encre-faint:#7A7F6E;
+  --rail:72px;
+  --radius:18px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  background:#0A1024;
+  color:var(--encre);
+  font-family:"Atkinson Hyperlegible",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,.serif{font-family:"Spectral",serif;}
+.mono{font-family:"IBM Plex Mono",monospace;}
+
+/* ---- pitch chrome ---- */
+.pitch{
+  height:52px; display:flex; align-items:center; gap:8px;
+  padding:0 12px; background:#0A1024; color:#EDE6D6;
+  border-bottom:1px solid rgba(201,162,39,.28);
+  position:sticky; top:0; z-index:40; flex-wrap:wrap;
+}
+.pitch b{font-family:Spectral,serif; font-weight:600; letter-spacing:.01em;}
+.pitch span{font-size:11px; opacity:.65; margin-right:auto; white-space:nowrap;}
+.pitch button{
+  background:transparent; color:#EDE6D6; border:1px solid rgba(237,230,214,.18);
+  border-radius:999px; padding:7px 13px; font:700 12px Atkinson Hyperlegible,sans-serif;
+  cursor:pointer;
+}
+.pitch button.on{ background:var(--laiton); color:#1A1404; border-color:transparent; }
+
+.stage{ height:calc(100vh - 52px); display:flex; overflow:hidden; }
+
+/* ---- app shell ---- */
+.rail{
+  width:var(--rail); background:var(--indigo); color:#EDE6D6;
+  display:flex; flex-direction:column; align-items:center; padding:18px 0 14px; gap:8px;
+}
+.mark{
+  width:40px; height:40px; border-radius:12px;
+  background:linear-gradient(160deg, #2A5A9A, var(--indigo-ink));
+  display:grid; place-items:center; font-family:Spectral,serif; font-weight:700; font-size:18px;
+  box-shadow:0 8px 20px -8px #1E3A8A;
+  margin-bottom:10px;
+}
+.rail button{
+  width:44px; height:44px; border:0; border-radius:12px; background:transparent; color:#9AA3C2; cursor:pointer;
+  display:grid; place-items:center;
+}
+.rail button svg{width:20px;height:20px;}
+.rail button.active{ background:var(--indigo-2); color:#F3EDE3; }
+.rail .spacer{flex:1;}
+
+.col{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.head{
+  display:flex; align-items:center; gap:16px;
+  padding:16px 28px; background:var(--os);
+  border-bottom:1px solid rgba(18,21,26,.08);
+}
+.head .eyebrow{ font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--indigo-ink); font-weight:700; }
+.head h1{ font-size:22px; font-weight:600; line-height:1.1; }
+.head .meta{ margin-left:auto; display:flex; gap:8px; align-items:center; font-size:12px; color:var(--encre-dim); }
+.pill{
+  border:1px solid rgba(18,21,26,.12); background:#fff8ee; border-radius:999px;
+  padding:5px 10px; font-size:11px; font-weight:700;
+}
+.pill.ok{ color:var(--mangrove); border-color:rgba(31,107,74,.3); background:rgba(31,107,74,.08); }
+.pill.warn{ color:var(--laterite); border-color:rgba(196,92,42,.3); background:rgba(196,92,42,.08); }
+.pill.gold{ color:#7A6410; border-color:rgba(201,162,39,.4); background:rgba(201,162,39,.16); }
+
+.view{ flex:1; overflow:auto; background:var(--os); padding:20px 22px 40px; }
+.view.seance-bg{ background:radial-gradient(900px 480px at 70% -10%, #1A2C63 0%, #0C1730 55%); color:#F3EDE3; }
+.hidden{ display:none !important; }
+
+/* cabinet */
+.ring-wrap{
+  background:linear-gradient(180deg,#fffaf1,#efe6d6);
+  border:1px solid rgba(18,21,26,.08);
+  border-radius:28px; padding:8px 12px 0; position:relative;
+  box-shadow:0 24px 50px -28px rgba(15,26,58,.35);
+}
+#amphi{ width:min(100%, 560px); height:240px; display:block; margin:0 auto; }
+.ring-center{
+  position:absolute; left:0; right:0; top:36px; height:180px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;
+}
+.ring-center strong{ font-family:Spectral,serif; font-size:52px; font-weight:700; letter-spacing:-.03em; line-height:1; }
+.ring-center em{ font-style:normal; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--encre-faint); }
+
+.metrics{ display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid rgba(18,21,26,.08); }
+.metric{ padding:14px 16px; }
+.metric small{ display:block; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--indigo-ink); font-weight:700; margin-bottom:4px; }
+.metric b{ font-family:Spectral,serif; font-size:26px; font-weight:600; }
+
+.frise{ margin-top:28px; }
+.frise h2{ font-size:15px; font-weight:600; margin-bottom:12px; }
+.ticks{ display:flex; gap:6px; align-items:flex-end; height:72px; }
+.tick{ flex:1; background:var(--laiton); border-radius:4px 4px 0 0; opacity:.85; }
+.tick.abs{ background:var(--laterite); }
+.tick label{ display:none; }
+
+/* seance */
+.seance-head{ display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+.seance-head h1{ font-size:32px; }
+.counter{ font-family:Spectral,serif; font-size:20px; }
+.counter .p{ color:#7DCEA0; } .counter .a{ color:#E08A62; } .counter .n{ color:#C9B98A; }
+.search{
+  width:100%; padding:14px 16px; border-radius:14px; border:1px solid rgba(243,237,227,.18);
+  background:rgba(255,255,255,.06); color:#F3EDE3; font:16px Atkinson Hyperlegible,sans-serif; margin-bottom:16px;
+}
+.plates{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.plate{
+  background:#F3EDE3; color:var(--encre); border-radius:14px; padding:12px 12px 10px;
+  display:flex; gap:10px; align-items:center; border-left:5px solid var(--mangrove); cursor:pointer;
+}
+.plate.abs{ border-left-color:var(--laterite); opacity:.78; filter:saturate(.7); }
+.plate.none{ border-left-color:#C5BCA8; }
+.av{
+  width:36px; height:36px; border-radius:50%; background:var(--indigo-2); color:#F3EDE3;
+  display:grid; place-items:center; font-size:11px; font-weight:700; flex-shrink:0;
+}
+.plate .nm{ font-weight:700; font-size:14px; }
+.plate .st{ font-size:11px; color:var(--encre-dim); }
+.sortants{ margin-top:22px; padding-top:14px; border-top:1px dashed rgba(243,237,227,.22); }
+.sortants h3{ font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#C9B98A; margin-bottom:10px; }
+.plate.guest{ background:transparent; color:#F3EDE3; border:1px dashed rgba(243,237,227,.28); border-left:5px dashed #C9B98A; }
+.clore{
+  position:sticky; bottom:16px; float:right; margin-top:18px;
+  background:var(--laiton); color:#1A1404; border:0; border-radius:999px;
+  padding:14px 22px; font:700 14px Atkinson Hyperlegible,sans-serif; cursor:pointer;
+  box-shadow:0 16px 32px -12px rgba(201,162,39,.65);
+}
+
+/* acte */
+.acte-grid{ display:grid; grid-template-columns:280px 1fr; gap:24px; }
+.paper{
+  background:#FFFaf2; border-radius:4px; min-height:640px;
+  box-shadow:0 30px 60px -24px rgba(15,26,58,.4), 0 0 0 1px rgba(18,21,26,.06);
+  padding:36px 40px;
+}
+.paper .uni{ font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--indigo-ink); font-weight:700; }
+.paper h2{ font-size:26px; margin:10px 0 4px; }
+.paper .when{ font-size:12px; color:var(--encre-dim); }
+.mini-ring{ width:120px; height:120px; margin:18px 0; }
+.table{ width:100%; border-collapse:collapse; font-size:13px; margin-top:12px; }
+.table th{ text-align:left; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--encre-faint); padding:8px 0; border-bottom:1px solid #ddd; }
+.table td{ padding:8px 0; border-bottom:1px solid #eee; }
+.sceau{
+  margin-top:36px; display:flex; align-items:center; gap:14px;
+}
+.stamp{
+  width:72px; height:72px; border-radius:50%; border:3px solid var(--laiton); color:var(--laiton);
+  display:grid; place-items:center; font:700 11px IBM Plex Mono,monospace; letter-spacing:.12em;
+  transform:rotate(-12deg);
+}
+.cfg label{ display:block; font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--indigo-ink); margin:12px 0 6px; }
+.cfg select, .cfg input{
+  width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(18,21,26,.14); background:#fff; font:14px Atkinson Hyperlegible,sans-serif;
+}
+.btn{
+  display:inline-flex; margin-top:16px; background:var(--indigo); color:#F3EDE3; border:0; border-radius:999px;
+  padding:12px 18px; font:700 13px Atkinson Hyperlegible,sans-serif; cursor:pointer;
+}
+
+/* estrade */
+.estrade{ display:grid; grid-template-columns:1.2fr .8fr; gap:18px; }
+.stage-card{
+  background:linear-gradient(160deg,#1A2C63,#0F1A3A); color:#F3EDE3; border-radius:24px; padding:28px; min-height:220px;
+}
+.stage-card .k{ font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--laiton); }
+.stage-card h2{ font-size:28px; margin:8px 0 6px; }
+.couloirs{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.couloirs span{ background:rgba(255,255,255,.08); border-radius:999px; padding:6px 10px; font-size:12px; }
+.doc{
+  background:#fff8ee; border-radius:14px; padding:12px 14px; margin-bottom:8px; display:flex; justify-content:space-between; gap:8px;
+  border:1px solid rgba(18,21,26,.08);
+}
+.pli{ border-color:rgba(201,162,39,.45); background:#FFF6D8; }
+
+/* phone */
+.phone-stage{ display:flex; justify-content:center; align-items:center; min-height:100%; }
+.phone{
+  width:360px; height:740px; background:#0C1730; border-radius:36px; border:10px solid #1A1F2E;
+  overflow:hidden; display:flex; flex-direction:column; color:#F3EDE3; position:relative;
+  box-shadow:0 40px 80px -20px rgba(0,0,0,.55);
+}
+.phone .ph-head{ padding:18px 18px 8px; }
+.phone .ph-head h1{ font-size:24px; }
+.phone .search{ margin:8px 16px 12px; }
+.phone .plist{ flex:1; overflow:auto; padding:0 16px 80px; display:flex; flex-direction:column; gap:8px; }
+.phone .plate{ width:100%; }
+.dock{
+  position:absolute; bottom:10px; left:16px; right:16px; height:58px; border-radius:18px;
+  background:rgba(15,26,58,.92); display:flex; justify-content:space-around; align-items:center;
+  border:1px solid rgba(243,237,227,.12);
+}
+.dock i{ font-style:normal; font-size:10px; text-align:center; color:#9AA3C2; }
+.dock i.on{ color:var(--laiton); }
+
+@media (max-width:720px){
+  .acte-grid,.estrade{ grid-template-columns:1fr; }
+  .plates{ grid-template-columns:1fr; }
+  .rail{ display:none; }
+}
+</style>
+</head>
+<body>
+<div class="pitch">
+  <b>Carnet</b>
+  <span>Proposition d’interfaces — cliquez pour feuilleter</span>
+  <button class="on" data-screen="cabinet">Cabinet</button>
+  <button data-screen="seance">Séance</button>
+  <button data-screen="acte">Acte</button>
+  <button data-screen="estrade">Estrade</button>
+  <button data-screen="phone">Téléphone</button>
+</div>
+
+<div class="stage" id="appShell">
+  <aside class="rail">
+    <div class="mark">C</div>
+    <button class="active" title="Tableau de bord" data-nav="cabinet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg></button>
+    <button title="Pointage" data-nav="seance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h10M4 17h7"/></svg></button>
+    <button title="Membres"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M4 19c1-3 3-5 5-5s4 2 5 5"/><circle cx="17" cy="9" r="2"/><path d="M15 19c.4-2 1.5-3.2 3-3.2"/></svg></button>
+    <button title="Rapports" data-nav="acte"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5"/></svg></button>
+    <button title="Amphithéâtre" data-nav="estrade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 19c3-6 6-9 9-9s6 3 9 9"/><path d="M12 10V5"/></svg></button>
+    <div class="spacer"></div>
+    <div class="av" style="width:32px;height:32px;font-size:12px;">MN</div>
+  </aside>
+  <div class="col">
+    <header class="head" id="acteHead">
+      <div>
+        <div class="eyebrow">Commission Administrative · USSEIN</div>
+        <h1 id="headTitle">Tableau de bord</h1>
+      </div>
+      <div class="meta">
+        <span class="pill">Section CA</span>
+        <span class="pill ok">Sur cet appareil</span>
+        <span class="mono">13 sept. 2026</span>
+      </div>
+    </header>
+
+    <section class="view" id="screen-cabinet">
+      <div class="ring-wrap">
+        <svg id="amphi" viewBox="0 0 400 320" aria-hidden="true"></svg>
+        <div class="ring-center"><strong>87%</strong><em>présence · 18 séances</em></div>
+        <div class="metrics">
+          <div class="metric"><small>Inscrits</small><b>214</b></div>
+          <div class="metric"><small>Hommes / Femmes</small><b>128 / 86</b></div>
+          <div class="metric"><small>Vigilance</small><b style="color:var(--laterite)">7</b></div>
+        </div>
+      </div>
+      <div class="frise">
+        <h2>Dernières séances</h2>
+        <div class="ticks" id="ticks"></div>
+      </div>
+    </section>
+
+    <section class="view seance-bg hidden" id="screen-seance">
+      <div class="seance-head">
+        <div>
+          <div class="eyebrow" style="color:var(--laiton)">Master Gouvernance</div>
+          <h1 class="serif">Séance du 13 septembre</h1>
+        </div>
+        <div class="counter"><span class="p">142 présents</span> · <span class="a">11 absents</span> · <span class="n">3 restants</span></div>
+      </div>
+      <input class="search" placeholder="Rechercher un nom…" value="">
+      <div class="plates" id="plates"></div>
+      <div class="sortants">
+        <h3>Sortants — figurants, hors effectif</h3>
+        <div class="plates">
+          <div class="plate guest none"><div class="av">KS</div><div><div class="nm">Khady Sow</div><div class="st">Non pointée</div></div></div>
+          <div class="plate guest none"><div class="av">BD</div><div><div class="nm">Babacar Diop</div><div class="st">Non pointé</div></div></div>
+        </div>
+      </div>
+      <button class="clore">Clore la séance</button>
+    </section>
+
+    <section class="view hidden" id="screen-acte">
+      <div class="acte-grid">
+        <div class="cfg">
+          <h2 class="serif" style="font-size:22px;margin-bottom:8px;">Composer l’acte</h2>
+          <p style="font-size:13px;color:var(--encre-dim);margin-bottom:8px;">Vous signez ce que vous voyez.</p>
+          <label>Portée</label>
+          <select><option>Tous les programmes</option><option>Master Gouvernance</option></select>
+          <label>Période</label>
+          <select><option>Septembre 2026</option><option>Année 2026</option></select>
+          <button class="btn">Signer et exporter le PDF</button>
+        </div>
+        <div class="paper">
+          <div class="uni">Université du Sine Saloum El-Hâdj Ibrahima NIASS</div>
+          <h2>Registre de présence</h2>
+          <div class="when mono">Commission Administrative · septembre 2026</div>
+          <svg class="mini-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="38" fill="none" stroke="#E8E0D2" stroke-width="8"/><circle cx="50" cy="50" r="38" fill="none" stroke="#1F6B4A" stroke-width="8" stroke-dasharray="206" stroke-dashoffset="27" transform="rotate(-90 50 50)"/><text x="50" y="54" text-anchor="middle" font-family="Spectral" font-size="18" font-weight="700">87%</text></svg>
+          <table class="table">
+            <thead><tr><th>Programme</th><th>Présence</th><th>Participation</th></tr></thead>
+            <tbody>
+              <tr><td>Master Gouvernance</td><td>91 %</td><td>96 %</td></tr>
+              <tr><td>Licence AES</td><td>84 %</td><td>88 %</td></tr>
+              <tr><td>Doctorat</td><td>79 %</td><td>81 %</td></tr>
+            </tbody>
+          </table>
+          <div class="sceau">
+            <div class="stamp">SIGNÉ</div>
+            <div>
+              <div class="serif" style="font-size:18px;">Mamadou Ndiaye</div>
+              <div class="mono" style="font-size:11px;color:var(--encre-faint);">Signataire · 13 sept. 2026 · 09:14</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view hidden" id="screen-estrade">
+      <div class="estrade">
+        <div class="stage-card">
+          <div class="k">Estrade · aujourd’hui</div>
+          <h2>Cours de méthodologie</h2>
+          <p style="opacity:.75;font-size:14px;">UFR SES · Licence AES · L2</p>
+          <div class="couloirs">
+            <span>SES · 42 docs</span><span>SAT · 19</span><span>SJA · 11</span><span>L1 · L2 · L3 · M1</span>
+          </div>
+        </div>
+        <div>
+          <div class="doc pli"><div><b>Support — séance 4</b><div style="font-size:12px;color:var(--encre-dim)">Pli en attente de départ</div></div><span class="pill gold">Hors ligne</span></div>
+          <div class="doc"><div><b>Corrigé TD 3</b><div style="font-size:12px;color:var(--encre-dim)">PDF · hier</div></div><span class="pill ok">En ligne</span></div>
+          <div class="doc"><div><b>Emploi du temps</b><div style="font-size:12px;color:var(--encre-dim)">UFR SES</div></div><span class="pill ok">En ligne</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="view hidden" id="screen-phone" style="height:calc(100vh - 52px);background:#1A1630;">
+  <div class="phone-stage">
+    <div class="phone">
+      <div class="ph-head">
+        <div class="eyebrow" style="color:var(--laiton)">Master Gouvernance</div>
+        <h1 class="serif">Appel</h1>
+        <div class="counter" style="font-size:15px;margin-top:6px;"><span class="p">142</span> · <span class="a">11</span> · <span class="n">3</span></div>
+      </div>
+      <input class="search" placeholder="Nom…">
+      <div class="plist" id="plist"></div>
+      <div class="dock">
+        <i>Cabinet</i><i class="on">Séance</i><i>Acte</i><i>Estrade</i>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const names = [
+  ["Awa Ndiaye","AN","p"],["Mamadou Diallo","MD","p"],["Fatou Sarr","FS","a"],
+  ["Ibrahima Ba","IB","p"],["Khady Fall","KF","p"],["Ousmane Kane","OK","n"],
+  ["Aïcha Diouf","AD","p"],["Cheikh Sy","CS","p"],["Mariama Cissé","MC","a"],
+  ["Pape Gueye","PG","p"],["Ndeye Faye","NF","p"],["Alioune Thiam","AT","n"]
+];
+
+function plates(el, mobile){
+  el.innerHTML = names.map(([n,i,s])=>{
+    const cls = s==="p"?"plate":s==="a"?"plate abs":"plate none";
+    const st = s==="p"?"Présent":s==="a"?"Absente":"Non pointé";
+    return `<div class="${cls}" data-s="${s}"><div class="av">${i}</div><div><div class="nm">${n}</div><div class="st">${st}</div></div></div>`;
+  }).join("");
+  el.querySelectorAll(".plate").forEach(p=>{
+    p.addEventListener("click",()=>{
+      const order=["p","a","n"];
+      let s=p.dataset.s; s=order[(order.indexOf(s)+1)%3];
+      p.dataset.s=s;
+      p.className="plate"+(s==="a"?" abs":s==="n"?" none":"");
+      p.querySelector(".st").textContent=s==="p"?"Présent":s==="a"?"Absent":"Non pointé";
+    });
+  });
+}
+plates(document.getElementById("plates"));
+plates(document.getElementById("plist"));
+
+/* amphitheatre dots */
+const svg=document.getElementById("amphi");
+const NS="http://www.w3.org/2000/svg";
+[[18,70],[26,96],[34,122],[42,148],[50,174]].forEach(([n,r],ri)=>{
+  for(let i=0;i<n;i++){
+    const t=(Math.PI*1.15)*(i/(n-1))-Math.PI*1.075;
+    const cx=200+Math.cos(t)*r*1.05;
+    const cy=210+Math.sin(t)*r*0.72;
+    const c=document.createElementNS(NS,"circle");
+    const roll=Math.random();
+    c.setAttribute("cx",cx); c.setAttribute("cy",cy); c.setAttribute("r", ri<2?2.2:2.6);
+    c.setAttribute("fill", roll<.82?"#1F6B4A":roll<.94?"#C45C2A":"#D9D0BE");
+    svg.appendChild(c);
+  }
+});
+const ticks=document.getElementById("ticks");
+[91,88,84,90,79,87,92,85,88,91,86,87].forEach((v,i)=>{
+  const d=document.createElement("div");
+  d.className="tick"+(v<82?" abs":"");
+  d.style.height=(v-70)*2+"px";
+  ticks.appendChild(d);
+});
+
+function show(id){
+  document.querySelectorAll(".pitch button").forEach(b=>b.classList.toggle("on", b.dataset.screen===id));
+  ["cabinet","seance","acte","estrade"].forEach(s=>{
+    document.getElementById("screen-"+s).classList.toggle("hidden", s!==id);
+  });
+  const phone=id==="phone";
+  document.getElementById("appShell").classList.toggle("hidden", phone);
+  document.getElementById("screen-phone").classList.toggle("hidden", !phone);
+  const titles={cabinet:"Tableau de bord",seance:"Pointage",acte:"Rapports",estrade:"Amphithéâtre"};
+  if(titles[id]) document.getElementById("headTitle").textContent=titles[id];
+  document.getElementById("acteHead").style.display = (id==="seance") ? "none" : "";
+}
+document.querySelectorAll(".pitch button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.screen)));
+document.querySelectorAll(".rail button[data-nav]").forEach(b=>b.addEventListener("click",()=>show(b.dataset.nav)));
+</script>
+</body>
+</html>

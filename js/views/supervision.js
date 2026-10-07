@@ -3,6 +3,7 @@ import { AppState, showToast } from '../state.js';
 import { escapeHtml, isNetworkError } from '../config.js';
 import { idbGet, idbSet } from '../db/indexeddb.js';
 import { statCard } from '../components/ui.js';
+import { findExtraKey, isSortant } from '../domain/membres.js';
 import { buildExportPdf } from '../export/pdf-export.js';
 import { buildStyledSheet } from '../export/xlsx-export.js';
 
@@ -33,10 +34,14 @@ function hasProgrammeBreakdown(data) {
     && data.membres.every(row => Array.isArray(row.programme_ids) || row.all_programmes === true);
 }
 
+function hasMemberBreakdown(data) {
+  return data.membres.every(row => typeof row.sexe === 'string');
+}
+
 function applySupervisionCache(cache) {
   if (!cache?.data) return false;
   AppState.supervisionData = cache.data;
-  AppState.supervisionCacheInfo = { source: 'cache', fetchedAt: cache.fetchedAt, sectionIds: cache.sectionIds || [], programmeBreakdownAvailable: hasProgrammeBreakdown(cache.data) };
+  AppState.supervisionCacheInfo = { source: 'cache', fetchedAt: cache.fetchedAt, sectionIds: cache.sectionIds || [], programmeBreakdownAvailable: hasProgrammeBreakdown(cache.data), memberBreakdownAvailable: hasMemberBreakdown(cache.data) };
   return true;
 }
 
@@ -54,14 +59,14 @@ async function loadData() {
     const sectionIds = AppState.sbSections.map(section => section.id);
     const [programmes, membres, sessions, pointages, documents, observations] = await Promise.all([
       fetchAll('programmes', 'id, section_id, nom', sectionIds),
-      fetchAll('membres', 'id, section_id, ap, sortant_since, programme_ids, all_programmes', sectionIds),
+      fetchAll('membres', 'id, section_id, ap, sortant_since, programme_ids, all_programmes, sexe', sectionIds),
       fetchAll('sessions', 'id, section_id, programme_id, date', sectionIds),
       fetchAll('pointages', 'id, section_id, session_id, statut', sectionIds),
       fetchAll('amphi_documents', 'id, section_id, created_at', sectionIds),
       fetchAll('observations', 'id, section_id, created_at', sectionIds),
     ]);
     AppState.supervisionData = { programmes, membres, sessions, pointages, documents, observations };
-    AppState.supervisionCacheInfo = { source: 'network', fetchedAt: new Date().toISOString(), sectionIds, programmeBreakdownAvailable: true };
+    AppState.supervisionCacheInfo = { source: 'network', fetchedAt: new Date().toISOString(), sectionIds, programmeBreakdownAvailable: true, memberBreakdownAvailable: true };
     try {
       await idbSet(SUPERVISION_CACHE_KEY, { data: AppState.supervisionData, fetchedAt: AppState.supervisionCacheInfo.fetchedAt, sectionIds });
     } catch (error) { /* l’écran reste utilisable si le stockage local est indisponible */ }
@@ -77,6 +82,49 @@ async function loadData() {
     AppState.supervisionLoading = false;
     AppState.render();
   }
+}
+
+export { loadData as loadSupervisionData };
+
+function normalizeCouncilMember(row) {
+  return {
+    id: row.id,
+    nom: row.nom || '',
+    prenom: row.prenom || '',
+    sexe: row.sexe || '',
+    programmeIds: row.programme_ids || row.programmeIds || [],
+    allProgrammes: !!(row.all_programmes ?? row.allProgrammes),
+    ap: !!row.ap,
+    extra: row.extra || {},
+    sortantSince: row.sortant_since || row.sortantSince || null,
+  };
+}
+
+async function readCachedSectionMembers(sectionId) {
+  if (AppState.activeSectionId === sectionId && AppState.data?.membres) return AppState.data.membres;
+  try {
+    const councilCache = await idbGet('carnet-council-roster:' + sectionId);
+    if (Array.isArray(councilCache)) return councilCache;
+    const cached = await idbGet('carnet-data:' + sectionId);
+    return Array.isArray(cached?.membres) ? cached.membres : null;
+  } catch (error) { return null; }
+}
+
+export async function loadCouncilRoster(sectionId) {
+  if (!sectionId) return [];
+  if (navigator.onLine && AppState.sb) {
+    try {
+      const rows = await fetchAll('membres', 'id, section_id, nom, prenom, sexe, programme_ids, all_programmes, ap, extra, sortant_since', [sectionId]);
+      const members = rows.map(normalizeCouncilMember);
+      try { await idbSet('carnet-council-roster:' + sectionId, members); } catch (error) { /* lecture disponible sans cache */ }
+      return members;
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+    }
+  }
+  const cachedMembers = await readCachedSectionMembers(sectionId);
+  if (cachedMembers) return cachedMembers;
+  throw new Error('Le répertoire détaillé de cette Section n’est pas disponible hors ligne. Consultez-le une première fois avec une connexion.');
 }
 
 function monthIndex(value) {
@@ -200,6 +248,29 @@ function collectStats(data, period, selectedSection, selectedProgramme) {
   });
 
   return { sections, programmes };
+}
+
+export function getCouncilSummary(period) {
+  if (!AppState.supervisionData) return null;
+  const data = AppState.supervisionData;
+  const { sections } = collectStats(data, period || '12m', 'all', 'all');
+  const membersBySection = new Map(AppState.sbSections.map(section => [section.id, []]));
+  data.membres.forEach(member => membersBySection.get(member.section_id)?.push(member));
+  return sections.map(row => {
+    const members = membersBySection.get(row.section.id) || [];
+    const active = members.filter(member => !member.ap && !member.sortant_since);
+    return {
+      ...row,
+      apMembers: members.filter(member => member.ap && !member.sortant_since).length,
+      sortants: members.filter(member => !!member.sortant_since).length,
+      men: active.filter(member => member.sexe === 'H').length,
+      women: active.filter(member => member.sexe === 'F').length,
+      interval: wilsonInterval(row.present, row.total),
+      attendanceRate: row.total ? Math.round(row.present / row.total * 100) : null,
+      coverage: row.sessions.length ? Math.round(row.pointedSessions.size / row.sessions.length * 100) : null,
+      lastSession: row.sessions.map(session => session.date).sort().at(-1) || '',
+    };
+  });
 }
 
 function reportPeriodLabel(period) {

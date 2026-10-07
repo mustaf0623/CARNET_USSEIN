@@ -16,6 +16,7 @@ import {
 } from '../components/modals.js';
 
 import { renderDashboard, attachDashboardEvents } from './dashboard.js';
+import { renderCouncilDashboard, attachCouncilDashboardEvents, canAccessCouncilView } from './council-dashboard.js';
 import { renderPointage, attachPointageEvents } from './pointage.js';
 import { renderMembres, attachMembresEvents } from './membres.js';
 import { renderRapports, attachRapportsEvents } from './rapports.js';
@@ -193,7 +194,10 @@ function attachOnboarding() {
 
 /* ================= TAB ROUTER ================= */
 function renderTab() {
-  if (AppState.tab === 'dashboard') return renderDashboard();
+  if (AppState.tab === 'dashboard') {
+    if (AppState.dashboardMode === 'council' && canAccessCouncilView()) return renderCouncilDashboard();
+    return renderDashboard();
+  }
   if (AppState.tab === 'pointage') return renderPointage();
   if (AppState.tab === 'membres') return renderMembres();
   if (AppState.tab === 'rapports') return renderRapports();
@@ -204,7 +208,10 @@ function renderTab() {
   return '';
 }
 function attachTabEvents() {
-  if (AppState.tab === 'dashboard') attachDashboardEvents();
+  if (AppState.tab === 'dashboard') {
+    if (AppState.dashboardMode === 'council' && canAccessCouncilView()) attachCouncilDashboardEvents();
+    else attachDashboardEvents();
+  }
   if (AppState.tab === 'pointage') attachPointageEvents();
   if (AppState.tab === 'membres') attachMembresEvents();
   if (AppState.tab === 'rapports') attachRapportsEvents();
