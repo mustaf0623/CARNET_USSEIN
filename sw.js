@@ -41,7 +41,6 @@ const CORE_ASSETS = [
   './js/views/observations.js',
   './js/views/administration.js',
   './js/views/supervision.js',
-  './js/views/council-dashboard.js',
 ];
 
 // Assets externes référencés dans index.html — on les met en cache pour permettre
