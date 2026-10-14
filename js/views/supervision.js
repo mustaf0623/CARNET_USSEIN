@@ -164,19 +164,24 @@ function collectStats(data, period, selectedSection, selectedProgramme) {
   const documents = data.documents.filter(row => includesSection(row.section_id) && (!start || row.created_at.slice(0, 10) >= start));
   const observations = data.observations.filter(row => includesSection(row.section_id) && (!start || row.created_at.slice(0, 10) >= start));
   const sessions = data.sessions.filter(row => includesSection(row.section_id) && programmeFilter.programmeIds.has(row.programme_id) && (!start || row.date >= start));
-  const sections = AppState.sbSections.filter(section => includesSection(section.id)).map(section => ({
-    section,
-    members: members.filter(row => row.section_id === section.id && !row.ap && !row.sortant_since
-      && (selectedProgramme === 'all' || row.all_programmes || (row.programme_ids || []).some(id => programmeFilter.programmeIds.has(id)))).length,
-    programmes: programmes.filter(row => row.section_id === section.id).length,
-    documents: documents.filter(row => row.section_id === section.id).length,
-    observations: observations.filter(row => row.section_id === section.id).length,
-    sessions: sessions.filter(row => row.section_id === section.id),
-    present: 0,
-    total: 0,
-    pointedSessions: new Set(),
-    weeklyByProgramme: new Map(),
-  }));
+  const sections = AppState.sbSections.filter(section => includesSection(section.id)).map(section => {
+    const activeMembers = members.filter(row => row.section_id === section.id && !row.ap && !row.sortant_since
+      && (selectedProgramme === 'all' || row.all_programmes || (row.programme_ids || []).some(id => programmeFilter.programmeIds.has(id))));
+    return {
+      section,
+      members: activeMembers.length,
+      men: activeMembers.filter(row => row.sexe === 'H').length,
+      women: activeMembers.filter(row => row.sexe === 'F').length,
+      programmes: programmes.filter(row => row.section_id === section.id).length,
+      documents: documents.filter(row => row.section_id === section.id).length,
+      observations: observations.filter(row => row.section_id === section.id).length,
+      sessions: sessions.filter(row => row.section_id === section.id),
+      present: 0,
+      total: 0,
+      pointedSessions: new Set(),
+      weeklyByProgramme: new Map(),
+    };
+  });
   const byId = new Map(sections.map(row => [row.section.id, row]));
   const bySessionId = new Map();
 
@@ -354,6 +359,9 @@ export function renderSupervision() {
     ? `<div class="supervision-cache-notice" role="status">Hors ligne · copie enregistrée le ${cacheInfo?.fetchedAt ? new Date(cacheInfo.fetchedAt).toLocaleString('fr-FR') : 'date inconnue'} · ${cachedSectionCount} Section${cachedSectionCount === 1 ? '' : 's'} incluse${cachedSectionCount === 1 ? '' : 's'} lors du dernier chargement. Ces données peuvent être anciennes.${programmeBreakdownAvailable ? '' : ' Le détail par programme nécessite une actualisation en ligne.'}</div>`
     : '';
   const totalMembers = sections.reduce((sum, row) => sum + row.members, 0);
+  const totalMen = sections.reduce((sum, row) => sum + row.men, 0);
+  const totalWomen = sections.reduce((sum, row) => sum + row.women, 0);
+  const memberBreakdownAvailable = hasMemberBreakdown(AppState.supervisionData);
   const totalSessions = sections.reduce((sum, row) => sum + row.sessions.length, 0);
   const pointedSessions = sections.reduce((sum, row) => sum + row.pointedSessions.size, 0);
   const missingPointageSessions = Math.max(0, totalSessions - pointedSessions);
@@ -408,6 +416,9 @@ export function renderSupervision() {
   const attendanceScope = selectedProgramme === 'all'
     ? 'tous les programmes'
     : `programme ${escapeHtml(selectedSection === 'all' ? programmeName || 'sélectionné' : programmes.find(programme => programme.id === selectedProgramme)?.nom || '')}`;
+  const memberNote = memberBreakdownAvailable
+    ? `${totalMen.toLocaleString('fr-FR')} hommes · ${totalWomen.toLocaleString('fr-FR')} femmes · ${attendanceScope} · hors sortants et ponctuels`
+    : `Répartition hommes/femmes indisponible dans cette copie · ${attendanceScope} · hors sortants et ponctuels`;
   const isCouncilView = selectedSection === 'all';
   const trendTitle = isCouncilView ? 'Évolution globale semaine par semaine' : 'Évolution hebdomadaire par programme';
   const trendDescription = isCouncilView
@@ -451,7 +462,7 @@ export function renderSupervision() {
   return `${coverageNotice}<div class="page-head supervision-head"><div><div class="eyebrow">${isCouncilView ? 'Pilotage multi-Sections' : `Analyse de ${escapeHtml(sections[0]?.section.nom || 'la Section')}`}</div><h1 class="page-title">Supervision</h1><p class="page-sub">${isCouncilView ? 'Comparer les Sections, repérer les écarts et ouvrir leur analyse détaillée.' : 'Analyser l’évolution, la couverture du pointage et les écarts entre programmes.'}</p></div>
       <div class="supervision-filters"><label class="field"><span>Période</span><select id="supervisionPeriod">${periodOptions}</select></label><label class="field"><span>Section</span><select id="supervisionSection">${sectionOptions}</select></label><label class="field supervision-programme-filter"><span>Programme</span><select id="supervisionProgramme" ${programmeBreakdownAvailable ? '' : 'disabled'}>${programmeOptions}</select></label><button class="btn btn-ghost supervision-refresh" id="supervisionRefresh" title="Actualiser les données" aria-label="Actualiser les données">↻</button></div></div>
     <section class="grid grid-4 supervision-kpis" aria-label="Indicateurs globaux">
-      ${statCard('Membres actifs', totalMembers.toLocaleString('fr-FR'), `${attendanceScope} · hors sortants et ponctuels`, 'stat-emerald')}
+      ${statCard('Membres actifs', totalMembers.toLocaleString('fr-FR'), memberNote, 'stat-emerald')}
       ${statCard('Séances pointées', `${pointedSessions.toLocaleString('fr-FR')} / ${totalSessions.toLocaleString('fr-FR')}`, coverage === null ? 'Aucune séance enregistrée' : `${coverage}% de couverture · séances avec au moins un pointage`, 'stat-gold')}
       ${statCard('Présence observée', rate === null ? '—' : rate + '%', total ? `Base : ${total.toLocaleString('fr-FR')} pointages · IC 95 % : ${Math.round(interval[0])}–${Math.round(interval[1])}%` : 'Aucun pointage sur cette période', 'stat-emerald')}
       ${statCard('Séances sans pointage', missingPointageSessions.toLocaleString('fr-FR'), totalSessions ? 'Séances enregistrées sans aucun pointage · données à compléter' : 'Aucune séance sur cette période', 'stat-terracotta')}
