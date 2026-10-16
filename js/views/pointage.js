@@ -70,7 +70,7 @@ export function renderPointage() {
         <span>${membres.length} membre${membres.length > 1 ? 's' : ''} inscrit${membres.length > 1 ? 's' : ''}</span>
         ${isReadOnly ? '' : `<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-dim);font-weight:600;cursor:pointer;">
           <input type="checkbox" id="fastModeToggle" ${AppState.pointageFastMode ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--emerald);">
-          Pointage rapide — tout le monde est présent par défaut, décochez les absents
+          Pointage rapide tout le monde est présent par défaut, décochez les absents
         </label>`}
       </div>
       <div id="memberList">
