@@ -70,7 +70,7 @@ export function renderPointage() {
         <span>${membres.length} membre${membres.length > 1 ? 's' : ''} inscrit${membres.length > 1 ? 's' : ''}</span>
         ${isReadOnly ? '' : `<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-dim);font-weight:600;cursor:pointer;">
           <input type="checkbox" id="fastModeToggle" ${AppState.pointageFastMode ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--emerald);">
-          Pointage rapide tout le monde est présent par défaut, décochez les absents
+          Pointage rapide — tout le monde est absent par défaut, cochez les présents
         </label>`}
       </div>
       <div id="memberList">
@@ -102,12 +102,12 @@ function memberRow(m, statut, fastMode, isSortantRow, isReadOnly) {
     statusHtml = `<div class="status-toggle"><span class="status-btn ${cls}" style="cursor:default;">${label}</span></div>`;
   } else if (fastMode) {
     // En mode rapide, un membre pas encore pointé pour cette séance démarre
-    // "présent" par défaut (au lieu de vide) : il suffit de décocher les
-    // absents. Un statut déjà enregistré (present/absent) est toujours
+    // "absent" par défaut (au lieu de vide) : il suffit de cocher les
+    // présents. Un statut déjà enregistré (present/absent) est toujours
     // respecté tel quel. Les Sortants ne bénéficient JAMAIS de ce défaut,
     // même si le mode rapide est actif globalement (fastMode est forcé à
     // false pour eux par l'appelant) : rien n'est présélectionné.
-    const effectiveStatut = statut === undefined ? 'present' : statut;
+    const effectiveStatut = statut === undefined ? 'absent' : statut;
     statusHtml = `<div class="status-toggle">
       <button class="status-btn present ${effectiveStatut === 'present' ? 'active' : ''}" data-statut="present" style="min-width:110px;">${effectiveStatut === 'present' ? '✓ Présent' : 'Absent'}</button>
     </div>`;
